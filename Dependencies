@@ -1,0 +1,16 @@
+Programming Language
+--------------------
+* C programming language
+
+Libraries
+---------
+* libssl (openssl) - only linkage and no derived code
+openssl is released under Apache-like license
+http://www.openssl.org/source/license.html
+
+* -pg linker option - invoking gprof profiling
+GNU Profiler 'gprof' released under GPL license is a part of GNU binutils
+package.
+
+* _no_ derived code or library dependencies on Azureus project.
+

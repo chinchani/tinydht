@@ -1,0 +1,43 @@
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
+
+AC_PREREQ(2.61)
+AC_INIT(TinyDHT, 0.1, tinydht-devel@gnu.org)
+AM_INIT_AUTOMAKE(tinydht, 0.1)
+AC_CONFIG_SRCDIR([config.h.in])
+AC_CONFIG_HEADER([config.h])
+
+AC_LANG_C
+
+# Checks for programs.
+AC_PROG_CC
+AM_PROG_LIBTOOL
+
+# Checks for libraries.
+AC_CHECK_LIB([m], [floor])
+AC_CHECK_LIB([ssl], [RAND_bytes])
+
+# Checks for header files.
+AC_HEADER_STDC
+AC_CHECK_HEADERS([arpa/inet.h fcntl.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])
+
+# Checks for typedefs, structures, and compiler characteristics.
+AC_HEADER_STDBOOL
+AC_C_CONST
+AC_C_INLINE
+AC_TYPE_INT32_T
+AC_TYPE_SIZE_T
+AC_HEADER_TIME
+AC_TYPE_UINT64_T
+
+# Checks for library functions.
+AC_FUNC_MALLOC
+AC_CHECK_FUNCS([bzero gethostbyname gettimeofday inet_ntoa memset socket sqrt])
+
+AC_CONFIG_FILES([Makefile
+                 src/Makefile
+                 src/azureus/Makefile
+                 plugins/Makefile
+                 plugins/stun/Makefile
+                 test/Makefile])
+AC_OUTPUT

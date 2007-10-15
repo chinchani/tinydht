@@ -1,0 +1,4 @@
+TinyDHT is a light-weight implementation of the Azureus Kademlia DHT.
+
+The main goal of TinyDHT is to provide a generic publish/retrieve capability of
+key/value pairs.

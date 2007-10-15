@@ -1,0 +1,52 @@
+/***************************************************************************
+ *   Copyright (C) 2007 by Saritha Kalyanam   				   *
+ *   kalyanamsaritha@gmail.com                                             *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 3 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, write to the                         *
+ *   Free Software Foundation, Inc.,                                       *
+ *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ ***************************************************************************/
+
+#ifndef __KEY_H__
+#define __KEY_H__
+
+#include "types.h"
+
+#define KEY_MAX_SIZE        32
+
+enum key_type {
+    KEY_TYPE_UNKNOWN = 0,
+    KEY_TYPE_RANDOM,
+    KEY_TYPE_SHA1,
+    KEY_TYPE_MAX
+};
+
+struct key {
+    enum key_type   type;
+    u8              data[KEY_MAX_SIZE];
+    int             len;
+};
+
+int key_new(struct key *k, enum key_type type, void *data, int data_len);
+int key_delete(struct key *k);
+
+int key_xor(struct key *k1, struct key *k2, struct key *xor);
+int key_distance(struct key *k1, struct key *k2, struct key *dist);
+
+int key_cmp(struct key *k1, struct key *k2);
+int key_nth_bit(struct key *k, int n);
+int key_get_size_from_type(enum key_type type);
+
+#endif /* __KEY_H__ */
+
