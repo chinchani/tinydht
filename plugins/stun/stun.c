@@ -40,7 +40,6 @@ static const char *stun_server_list[] = {
     "stunserver.org",
     "stun.fwdnet.net",
     "stun01.sipphone.com",
-    "stun.softijoys.com",
     "stun.voipbuster.com",
     "stun.voxgratia.org",
     "stun.xten.com",
@@ -135,6 +134,7 @@ stun_get_nat_info(struct stun_nat_info *info)
     int ret;
     const char *server = NULL;
     struct hostent *he = NULL;
+    struct sockaddr_in dst;
 
     ASSERT(info);
 
@@ -161,6 +161,7 @@ stun_get_nat_info(struct stun_nat_info *info)
         if (!server) {
             continue;
         }
+        DEBUG("picked stun %s\n", server);
 
         he = gethostbyname(server);
         if (!he) {
@@ -169,9 +170,16 @@ stun_get_nat_info(struct stun_nat_info *info)
         }
 
         /* FIXME: do the stun tests here */
-        ret = stun_test_one(sock, he->h_addr);
+        bzero(&dst, sizeof(dst));
+        dst.sin_family = AF_INET;
+        dst.sin_port = htons(STUN_SERVICE);
+        memcpy(&dst.sin_addr.s_addr, he->h_addr, sizeof(struct in_addr));
+
+        ret = stun_test_one(sock, &dst);
         if (ret != SUCCESS) {
             continue;
+        } else {
+            break;
         }
     }
 
@@ -198,17 +206,19 @@ stun_test_one(int sock, struct sockaddr_in *dst)
     if (ret != SUCCESS) {
         return FAILURE;
     }
-    req_len = sizeof(struct stun_msg_hdr);
+    req_len = 0;
     hdr->len = ntohs(req_len);
 
-    pkt_dump_data(req, req_len);
+    pkt_dump_data(req, sizeof(struct stun_msg_hdr));
 
-    ret = stun_send_and_receive(sock, dst, req, req_len, &from, rsp, &rsp_len);
+    ret = stun_send_and_receive(sock, dst, req, sizeof(struct stun_msg_hdr), &from, rsp, &rsp_len);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    ret = stun_read_msg(rsp, rsp_len, msg);
+    pkt_dump_data(rsp, rsp_len);
+
+    ret = stun_read_msg(rsp, rsp_len, &msg);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -268,17 +278,17 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
 
     ASSERT(data && len && msg);
 
-    while (len > 0) {
-        tlv = (struct stun_tlv *)data;
+    tlv = (struct stun_tlv *)data;
 
+    while (len > 0) {
         switch (ntohs(tlv->type)) {
             case MAPPED_ADDRESS:
                 /* parse the inet address */
                 if (ntohs(tlv->len) != 8) {
-                    break;
+                    ASSERT(0);
                 }
                 ret = stun_read_inetaddr((struct stun_inetaddr_attr *)tlv->val,
-                                            &msg->alt_server);
+                                            &msg->map_addr);
                 if (ret != SUCCESS) {
                     break;
                 }
@@ -305,8 +315,8 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
                 break;
         }
 
-        tlen = ntohs(tlv->len);
-        len -= tlen;
+        tlen = ntohs(tlv->len) + sizeof(struct stun_tlv);
+        len -= tlen; 
 
         tlv = (void *)tlv + tlen;
     }
@@ -325,7 +335,7 @@ stun_read_inetaddr(struct stun_inetaddr_attr *attr, struct sockaddr_in *sin)
         return FAILURE;
     }
 
-    sin->sin_family = ntohs(attr->family);
+    sin->sin_family = AF_INET;
     sin->sin_port = ntohs(attr->port);
     memcpy(&sin->sin_addr.s_addr, attr->addr, sizeof(u32));
 

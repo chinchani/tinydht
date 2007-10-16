@@ -29,7 +29,7 @@
 /* NOTE: STUN implementations out there are a mashup of rfc 3489 and 
  * the later ietf revisions */
 
-#define SUN_SERVICE     3478
+#define STUN_SERVICE     3478
 
 enum stun_msg_type {
     BINDING_REQUEST             = 0x0001,
@@ -70,14 +70,14 @@ enum stun_attr_type {
 struct stun_tlv {
     u16         type;
     u16         len;
-    u8          *val;
+    u8          val[0];
 } __attribute__((packed));
 
 
 struct stun_inetaddr_attr {
     u16         family;
     u16         port;
-    u8          *addr;
+    u8          addr[0];
 } __attribute__((packed));
 #define STUN_INETADDR4_TYPE     0x0001
 

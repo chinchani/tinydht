@@ -360,19 +360,13 @@ tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
             INFO("TinyDHT using STUN port %d\n", ntohs(addr4.sin_port));
 
             bzero(&nat_info, sizeof(struct stun_nat_info));
+            memcpy(&nat_info.internal, &addr4, sizeof(struct sockaddr_in));
 
             /* use STUN to find out the external address */
             ret = stun_get_nat_info(&nat_info);
             if (ret != SUCCESS) {
                 return ret;
             }
-#if 0
-            /* use STUN to find out the external address */
-            ret = stun_get_ext_ip_addr(&addr4, &ext_addr4);
-            if (ret != SUCCESS) {
-                return ret;
-            }
-#endif
 
             INFO("TinyDHT RPC Public IP %s\n", inet_ntoa(ext_addr4.sin_addr));
 

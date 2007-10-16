@@ -405,7 +405,7 @@ pkt_dump(struct pkt *pkt)
   
     printf("pkt (%p) - cursor (%d) len (%d)\n", pkt, pkt->cursor, pkt->len);
     for (row = 0; row < max_row; row++) {
-        max_col = pkt->len % width ? pkt->len % width : width;
+        max_col = pkt->len / width ? width : pkt->len % width;
         printf("%04x| ", row);
         for (col = 0; col < max_col; col++) {
             printf("%02x ", pkt->data[row*width + col]);
@@ -436,7 +436,7 @@ pkt_dump_data(u8 *data, size_t len)
   
     printf("data (%p) - len (%d)\n", data, len);
     for (row = 0; row < max_row; row++) {
-        max_col = len % width ? len % width : width;
+        max_col = len / width ? width : len % width;
         printf("%04x| ", row);
         for (col = 0; col < max_col; col++) {
             printf("%02x ", data[row*width + col]);
