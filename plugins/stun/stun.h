@@ -94,6 +94,16 @@ struct stun_err_code_attr {
 #define ERROR_CODE_CLASS_MASK   (BIT32(4) | BIT32(5) | BIT32(6))
 #define ERROR_CODE_NUMBER_MASK  (BIT32(0) | BIT32(1) | BIT32(2) | BIT32(3))
 
+enum stun_nat_type {
+    STUN_NAT_TYPE_UNKNOWN = 0,
+    STUN_NO_NAT,
+    STUN_NAT_FULL_CONE,
+    STUN_NAT_RESTRICTED_CONE,
+    STUN_NAT_PORT_RESTRICTED_CONE,
+    STUN_NAT_SYMMETRIC,
+    STUN_FIREWALLED
+};
+
 struct stun_msg {
     struct stun_msg_hdr         hdr;
     struct sockaddr_in          map_addr;
@@ -105,16 +115,9 @@ struct stun_msg {
     struct sockaddr_in          src_addr;
     struct stun_chg_req_attr    chg_req;
     struct stun_err_code_attr   err_code;
+    enum stun_nat_type          nat_type;
 };
 
-enum stun_nat_type {
-    STUN_NAT_TYPE_UNKNOWN = 0,
-    STUN_NO_NAT,
-    STUN_NAT_FULL_CONE,
-    STUN_NAT_RESTRICTED_CONE,
-    STUN_NAT_PORT_RESTRICTED_CONE,
-    STUN_NAT_SYMMETRIC
-};
 
 struct stun_nat_info {
     enum stun_nat_type          nat_type;

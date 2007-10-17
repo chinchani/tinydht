@@ -398,17 +398,23 @@ pkt_dump(struct pkt *pkt)
     int row, col;
     int max_row, max_col;
     char ch;
+    int len;
 
     ASSERT(pkt && (pkt->len > 0));
 
     max_row = pkt->len/width + ((pkt->len % width) ? 1 : 0);
-  
+    
+    len = pkt->len;
+
     printf("pkt (%p) - cursor (%d) len (%d)\n", pkt, pkt->cursor, pkt->len);
     for (row = 0; row < max_row; row++) {
-        max_col = pkt->len / width ? width : pkt->len % width;
+        max_col = len / width ? width : len % width;
         printf("%04x| ", row);
         for (col = 0; col < max_col; col++) {
             printf("%02x ", pkt->data[row*width + col]);
+        }
+        for (col = max_col; col < width; col++) {
+            printf("%2s ", "  ");
         }
         printf("| ");
         for (col = 0; col < max_col; col++) {
@@ -416,6 +422,8 @@ pkt_dump(struct pkt *pkt)
             printf("%c", (isprint(ch) ? ch : '.'));
         }
         printf("\n");
+
+        len -= max_row;
     }
     printf("\n");
 
@@ -441,12 +449,16 @@ pkt_dump_data(u8 *data, size_t len)
         for (col = 0; col < max_col; col++) {
             printf("%02x ", data[row*width + col]);
         }
+        for (col = max_col; col < width; col++) {
+            printf("%2s ", "  ");
+        }
         printf("| ");
         for (col = 0; col < max_col; col++) {
             ch = data[row*width + col];
             printf("%c", (isprint(ch) ? ch : '.'));
         }
         printf("\n");
+        len -= max_col;
     }
     printf("\n");
 

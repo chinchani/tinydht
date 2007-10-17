@@ -248,23 +248,6 @@ tinydht_signal_handler(int signum)
 
     return;
 }
-
-int
-tinydht_get_rnd_port(u16 *port)
-{
-    int ret;
-    u16 s;
-
-    ret = crypto_get_rnd_short(&s);
-    if (ret != SUCCESS) {
-        return ret;
-    }
-
-    *port = htons(1024 + s % (65536 - 1024));
-    
-    return SUCCESS;
-}
-
 int
 tinydht_get_intf_ip_addrs(const char *ifname, 
                             struct dht_net_if *nif, int *n_if, int max_if)
@@ -339,28 +322,16 @@ int
 tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
 {
     int sa_family;
-    struct sockaddr_in addr4, ext_addr4;
     struct stun_nat_info nat_info;
     int ret;
 
-    sa_family = ((struct sockaddr *)&nif->local_addr)->sa_family;
+    sa_family = ((struct sockaddr *)&nif->int_addr)->sa_family;
 
     switch (sa_family) {
         case AF_INET:
-            bzero(&addr4, sizeof(struct sockaddr_in));
-            memcpy(&addr4, &nif->local_addr, sizeof(struct sockaddr_in));
-
-            bzero(&ext_addr4, sizeof(struct sockaddr_in));
-
-            ret = tinydht_get_rnd_port((u16 *)&addr4.sin_port);
-            if (ret != SUCCESS) {
-                return ret;
-            }
-
-            INFO("TinyDHT using STUN port %d\n", ntohs(addr4.sin_port));
-
             bzero(&nat_info, sizeof(struct stun_nat_info));
-            memcpy(&nat_info.internal, &addr4, sizeof(struct sockaddr_in));
+            memcpy(&nat_info.internal, &nif->int_addr, 
+                            sizeof(struct sockaddr_in));
 
             /* use STUN to find out the external address */
             ret = stun_get_nat_info(&nat_info);
@@ -368,10 +339,11 @@ tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
                 return ret;
             }
 
-            INFO("TinyDHT RPC Public IP %s\n", inet_ntoa(ext_addr4.sin_addr));
+            INFO("TinyDHT RPC Public IP %s\n", 
+                    inet_ntoa(((struct sockaddr_in *)&nat_info.external)->sin_addr));
 
-            memcpy(&nif->ext_addr, &ext_addr4, sizeof(struct sockaddr_in));
-            nif->ext_addr.ss_family = AF_INET;
+            memcpy(&nif->ext_addr, &nat_info.external, 
+                            sizeof(struct sockaddr_storage));
 
             break;
 
@@ -401,7 +373,7 @@ tinydht_add_dht(unsigned int type, struct dht_net_if *nif)
 
     do {
         unique_port = TRUE;
-        ret = tinydht_get_rnd_port((u16 *)&port);
+        ret = dht_get_rnd_port((u16 *)&port);
         if (ret != SUCCESS) {
             return ret;
         }

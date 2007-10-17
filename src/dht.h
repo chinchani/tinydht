@@ -35,7 +35,7 @@ struct tinydht_msg;
 
 struct dht_net_if {
     char                        ifname[IFNAMSIZ];
-    struct sockaddr_storage     local_addr;
+    struct sockaddr_storage     int_addr;
     struct sockaddr_storage     ext_addr;
     int                         sock;
 };
@@ -64,5 +64,6 @@ int dht_new(struct dht *dht, unsigned int type,
                         struct dht_net_if *net_if, short port);
 
 u64 dht_get_current_time(void);
+int dht_get_rnd_port(u16 *port);
 
 #endif /* __DHT_H__ */

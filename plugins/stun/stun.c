@@ -53,6 +53,13 @@ static const char *stun_server_list[] = {
 
 static const size_t n_stun_servers = sizeof(stun_server_list)/sizeof(char *);
 
+int stun_test_one(int sock, struct sockaddr_in *src, 
+                    struct sockaddr_in *dst, struct stun_msg *msg);
+int stun_read_msg(u8 *data, size_t len, struct stun_msg *msg);
+int stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg);
+int stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, 
+                            struct sockaddr_in *sin);
+
 const char *
 stun_pick_rnd_server(void)
 {
@@ -81,122 +88,79 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
 
     ASSERT(sock && dst && in && inlen && src && out && outlen);
 
-    ret = sendto(sock, in, inlen, 0, (struct sockaddr *)dst, 
-                    sizeof(struct sockaddr_in));
-    if (ret < 0) {
-        ERROR("sendto() - %s\n", strerror(errno));
-        return FAILURE;
-    }
-
     bzero(&ts, sizeof(ts));
     t = 0;
 
     while (t < MAX_STUN_TIMEOUT) {
+
+        ret = sendto(sock, in, inlen, 0, (struct sockaddr *)dst, 
+                sizeof(struct sockaddr_in));
+        if (ret < 0) {
+            ERROR("sendto() - %s\n", strerror(errno));
+            return FAILURE;
+        }
+
+        t = t * 2 + 100; 
+        if (t > MAX_STUN_TIMEOUT) {
+            break;
+        }
+        ts.tv_sec = t / 1000;
+        ts.tv_nsec = (t % 1000) * 1000000;
+        nanosleep(&ts, NULL);
+
         errno = 0;
+        fromlen = sizeof(from);
 
         ret = recvfrom(sock, buf, sizeof(buf), MSG_DONTWAIT, 
                 (struct sockaddr *)&from, &fromlen);
+
         if (ret < 0) {
             if (errno != EAGAIN) {
+                ERROR("recvfrom() - %s\n", strerror(errno));
                 break;
             }
-            t = t * 2 + 100; /* millisecs */
-            if (t > MAX_STUN_TIMEOUT) {
-                break;
-            }
-            ts.tv_sec = t / 1000;
-            ts.tv_nsec = (t % 1000) * 1000000;
-            nanosleep(&ts, NULL);
             continue;
+
         } else if (ret == 0) {
+            ERROR("empty response\n");
             break;
         } else {
             if (memcmp(&dst->sin_addr, &from.sin_addr, 
                         sizeof(struct in_addr)) != 0) {
-                ERROR("received STUN reply from invalid source\n");
+                ERROR("received reply from invalid source\n");
                 return FAILURE;
             }
+
+            if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
+                        ((struct stun_msg_hdr *)buf)->trans_id, 16)) {
+                ERROR("invalid transaction id\n");
+                return FAILURE;
+            }
+
             *outlen = ret;
             memcpy(out, buf, *outlen);
             memcpy(src, &from, sizeof(struct sockaddr_in));
 
             return SUCCESS;
         }
+
+        DEBUG("retransmitting STUN request\n");
     } 
 
     return FAILURE;
 }
 
 int
-stun_get_nat_info(struct stun_nat_info *info)
-{
-    int sock;
-    int ret;
-    const char *server = NULL;
-    struct hostent *he = NULL;
-    struct sockaddr_in dst;
-
-    ASSERT(info);
-
-    /* support only IPv4 */
-    if (info->internal.ss_family != AF_INET) {
-        return FAILURE;
-    }
-
-    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock < 0) {
-        ERROR("socket() - %s\n", strerror(errno));
-        return FAILURE;
-    }
-
-    ret = bind(sock, (struct sockaddr *)&info->internal, 
-                sizeof(struct sockaddr_in));
-    if (ret < 0) {
-        ERROR("bind() - %s\n", strerror(errno));
-        return FAILURE;
-    }
-
-    while (TRUE) {
-        server = stun_pick_rnd_server();
-        if (!server) {
-            continue;
-        }
-        DEBUG("picked stun %s\n", server);
-
-        he = gethostbyname(server);
-        if (!he) {
-            ERROR("gethostbyname() - %s\n", gai_strerror(h_errno));
-            continue;
-        }
-
-        /* FIXME: do the stun tests here */
-        bzero(&dst, sizeof(dst));
-        dst.sin_family = AF_INET;
-        dst.sin_port = htons(STUN_SERVICE);
-        memcpy(&dst.sin_addr.s_addr, he->h_addr, sizeof(struct in_addr));
-
-        ret = stun_test_one(sock, &dst);
-        if (ret != SUCCESS) {
-            continue;
-        } else {
-            break;
-        }
-    }
-
-    return SUCCESS;
-}
-
-int
-stun_test_one(int sock, struct sockaddr_in *dst)
+stun_test_one(int sock, struct sockaddr_in *src, 
+                    struct sockaddr_in *dst, struct stun_msg *msg)
 {
     u8 req[512], rsp[512];
     struct stun_msg_hdr *hdr = NULL;
-    size_t req_len, rsp_len;
+    size_t rsp_len;
     int ret;
     struct sockaddr_in from;
-    struct stun_msg msg;
 
-    ASSERT(sock && dst);
+    ASSERT(sock && dst && msg);
 
     bzero(req, sizeof(req));
 
@@ -206,25 +170,36 @@ stun_test_one(int sock, struct sockaddr_in *dst)
     if (ret != SUCCESS) {
         return FAILURE;
     }
-    req_len = 0;
-    hdr->len = ntohs(req_len);
+    hdr->len = 0;
 
     pkt_dump_data(req, sizeof(struct stun_msg_hdr));
 
-    ret = stun_send_and_receive(sock, dst, req, sizeof(struct stun_msg_hdr), &from, rsp, &rsp_len);
+    ret = stun_send_and_receive(sock, dst, req, sizeof(struct stun_msg_hdr), 
+                                    &from, rsp, &rsp_len);
     if (ret != SUCCESS) {
+        msg->nat_type = STUN_FIREWALLED;
         return ret;
     }
 
     pkt_dump_data(rsp, rsp_len);
 
-    ret = stun_read_msg(rsp, rsp_len, &msg);
+    ret = stun_read_msg(rsp, rsp_len, msg);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    if (msg.hdr.type != BINDING_RESPONSE) {
+    /* FIXME: change this to conform to rfc */
+    if (msg->hdr.type == BINDING_ERROR_RESPONSE) {
         return FAILURE;
+    }
+
+    if (msg->hdr.type != BINDING_RESPONSE) {
+        return FAILURE;
+    }
+
+    if (!memcmp(src, &msg->map_addr, sizeof(struct sockaddr_in))) {
+        msg->nat_type = STUN_NO_NAT;
+        INFO("possibly no NAT\n");
     }
 
     return SUCCESS;
@@ -253,8 +228,6 @@ stun_read_msg(u8 *data, size_t len, struct stun_msg *msg)
     int ret;
 
     ASSERT(data && len && msg);
-
-    bzero(msg, sizeof(struct stun_msg));
 
     hdr = (struct stun_msg_hdr *)data;
     msg->hdr.type = ntohs(hdr->type);
@@ -287,7 +260,7 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
                 if (ntohs(tlv->len) != 8) {
                     ASSERT(0);
                 }
-                ret = stun_read_inetaddr((struct stun_inetaddr_attr *)tlv->val,
+                ret = stun_read_inetaddr_attr((struct stun_inetaddr_attr *)tlv->val,
                                             &msg->map_addr);
                 if (ret != SUCCESS) {
                     break;
@@ -304,7 +277,7 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
                 if (ntohs(tlv->len) != 8) {
                     break;
                 }
-                ret = stun_read_inetaddr((struct stun_inetaddr_attr *)tlv->val,
+                ret = stun_read_inetaddr_attr((struct stun_inetaddr_attr *)tlv->val,
                                             &msg->alt_server);
                 if (ret != SUCCESS) {
                     break;
@@ -325,7 +298,8 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
 }
 
 int
-stun_read_inetaddr(struct stun_inetaddr_attr *attr, struct sockaddr_in *sin)
+stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, 
+                            struct sockaddr_in *sin)
 {
     ASSERT(attr && sin);
 
@@ -341,6 +315,87 @@ stun_read_inetaddr(struct stun_inetaddr_attr *attr, struct sockaddr_in *sin)
 
     return SUCCESS;
 }
+
+int
+stun_get_nat_info(struct stun_nat_info *info)
+{
+    int sock;
+    int ret;
+    const char *server = NULL;
+    struct hostent *he = NULL;
+    struct sockaddr_in dst;
+    struct stun_msg msg;
+
+    ASSERT(info);
+
+    /* support only IPv4 */
+    if (info->internal.ss_family != AF_INET) {
+        return FAILURE;
+    }
+
+    ret = dht_get_rnd_port(&((struct sockaddr_in *)&info->internal)->sin_port);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0) {
+        ERROR("socket() - %s\n", strerror(errno));
+        return FAILURE;
+    }
+
+    ret = bind(sock, (struct sockaddr *)&info->internal, 
+                sizeof(struct sockaddr_in));
+    if (ret < 0) {
+        ERROR("bind() - %s\n", strerror(errno));
+        return FAILURE;
+    }
+
+    while (TRUE) {
+        server = stun_pick_rnd_server();
+        if (!server) {
+            continue;
+        }
+        DEBUG("STUN server %s\n", server);
+
+        he = gethostbyname(server);
+        if (!he) {
+            ERROR("gethostbyname() - %s\n", gai_strerror(h_errno));
+            continue;
+        }
+
+        /* FIXME: do the stun tests here */
+        bzero(&dst, sizeof(dst));
+        dst.sin_family = AF_INET;
+        dst.sin_port = htons(STUN_SERVICE);
+        memcpy(&dst.sin_addr.s_addr, he->h_addr, sizeof(struct in_addr));
+
+        bzero(&msg, sizeof(msg));
+
+        ret = stun_test_one(sock, (struct sockaddr_in *)&info->internal, 
+                                &dst, &msg);
+        if (ret != SUCCESS) {
+            if (msg.nat_type == STUN_FIREWALLED) {
+                break;
+            }
+            continue;
+        } 
+        /*
+         * FIXME: two more tests to figure out the nat type 
+         *
+        ret = stun_test_two();
+        ret = stun_test_three();
+        */
+        
+        else {
+            memcpy(&info->external, &msg.map_addr, sizeof(struct sockaddr_in));
+            break;
+        }
+    }
+
+    return SUCCESS;
+}
+
 
 /*
 

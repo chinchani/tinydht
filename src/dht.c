@@ -35,7 +35,7 @@ dht_net_if_new(struct dht_net_if *net_if,
 {
     bzero(net_if, sizeof(struct dht_net_if));
     memcpy(net_if->ifname, ifname, IFNAMSIZ);
-    memcpy(&net_if->local_addr, addr, addrlen);
+    memcpy(&net_if->int_addr, addr, addrlen);
     return SUCCESS;
 }
 
@@ -55,12 +55,12 @@ dht_new(struct dht *dht, unsigned int type,
     memcpy(&dht->net_if, net_if, sizeof(struct dht_net_if));
     dht->port = port;
 
-    sa_family = ((struct sockaddr *)&net_if->local_addr)->sa_family;
+    sa_family = ((struct sockaddr *)&net_if->int_addr)->sa_family;
 
     switch (sa_family) {
         case AF_INET:
             bzero(&addr4, sizeof(struct sockaddr_in));
-            memcpy(&addr4, &net_if->local_addr, sizeof(struct sockaddr_in));
+            memcpy(&addr4, &net_if->int_addr, sizeof(struct sockaddr_in));
             addr4.sin_port = port;
 
             sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -85,7 +85,7 @@ dht_new(struct dht *dht, unsigned int type,
 
         case AF_INET6:
             bzero(&addr6, sizeof(struct sockaddr_in6));
-            memcpy(&addr6, &net_if->local_addr, sizeof(struct sockaddr_in6));
+            memcpy(&addr6, &net_if->int_addr, sizeof(struct sockaddr_in6));
             addr6.sin6_port = port;
 
             sock = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -160,5 +160,21 @@ dht_get_current_time(void)
     }
 
     return ((u64)1*tv.tv_sec*1000*1000 + tv.tv_usec);
+}
+
+int
+dht_get_rnd_port(u16 *port)
+{
+    int ret;
+    u16 s;
+
+    ret = crypto_get_rnd_short(&s);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    *port = htons(1024 + s % (65536 - 1024));
+    
+    return SUCCESS;
 }
 
