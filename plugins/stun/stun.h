@@ -61,7 +61,7 @@ enum stun_attr_type {
     REFLECTED_FROM      = 0x000b,
     REALM               = 0x0014,
     NONCE               = 0x0015,
-    XOR_MAPPED_ADDRESS  = 0x0020,
+    XOR_MAPPED_ADDRESS  = 0x8020,
     SERVER              = 0x8022,
     ALTERNATE_SERVER    = 0x8023,
     FINGERPRINT         = 0x8028
@@ -108,16 +108,16 @@ struct stun_msg {
     struct stun_msg_hdr         hdr;
     struct sockaddr_in          map_addr;
     struct sockaddr_in          rsp_addr;
-    struct sockaddr_in          server;
-    struct sockaddr_in          alt_server;
-    struct sockaddr_in          xor_addr;
-    struct sockaddr_in          chg_addr;
     struct sockaddr_in          src_addr;
+    struct sockaddr_in          chg_addr;
+    struct sockaddr_in          ref_frm;
+    struct sockaddr_in          xor_map_addr;
+    u8                          server[763];
+    struct sockaddr_in          alt_server;
     struct stun_chg_req_attr    chg_req;
     struct stun_err_code_attr   err_code;
     enum stun_nat_type          nat_type;
 };
-
 
 struct stun_nat_info {
     enum stun_nat_type          nat_type;

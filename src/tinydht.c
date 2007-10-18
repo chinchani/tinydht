@@ -23,6 +23,7 @@
 #include <config.h>
 #endif
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -80,6 +81,7 @@ int tinydht_init(void);
 void tinydht_exit(void);
 int tinydht_init_sighandlers(void);
 static void tinydht_signal_handler(int signum);
+int tinydht_usage(const char *cmd);
 
 int tinydht_get_intf_ip_addrs(const char *ifname, 
                             struct dht_net_if *nif, int *n_if, int max_if);
@@ -106,8 +108,33 @@ int
 main(int argc, char *argv[])
 {
     int ret;
+    int c;
+    int index;
 
-    memcpy(rpc_ifname, "eth1", sizeof(rpc_ifname));
+    if (argc < 2) {
+        tinydht_usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    opterr = 0;
+
+    while ((c = getopt(argc, argv, "i:")) != -1) {
+        switch (c) {
+            case 'i':
+                bzero(rpc_ifname, sizeof(rpc_ifname));
+                memcpy(rpc_ifname, optarg, sizeof(rpc_ifname)-1);
+                break;
+            default:
+                tinydht_usage(argv[0]);
+                return EXIT_FAILURE;
+        }
+
+        for (index = optind; index < argc; index++) {
+            printf ("Non-option argument %s\n", argv[index]);
+            tinydht_usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+    }
 
     ret = tinydht_init();
     if (ret != SUCCESS) {
@@ -340,7 +367,8 @@ tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
             }
 
             INFO("TinyDHT RPC Public IP %s\n", 
-                    inet_ntoa(((struct sockaddr_in *)&nat_info.external)->sin_addr));
+                    inet_ntoa(((struct sockaddr_in *)
+                                    &nat_info.external)->sin_addr));
 
             memcpy(&nif->ext_addr, &nat_info.external, 
                             sizeof(struct sockaddr_storage));
@@ -767,7 +795,6 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
         ERROR("send() - %s\n", strerror(errno));
     }
 
-    /* we are done with this transaction */
     close(sock);
 
     return SUCCESS;
@@ -829,4 +856,11 @@ tinydht_get(struct tinydht_msg *msg)
     } 
 
     return FAILURE;
+}
+
+int
+tinydht_usage(const char *cmd)
+{
+    printf("usage: %s -i <interface>\n", cmd);
+    return SUCCESS;
 }

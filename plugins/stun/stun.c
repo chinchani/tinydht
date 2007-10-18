@@ -44,7 +44,6 @@ static const char *stun_server_list[] = {
     "stun.voxgratia.org",
     "stun.xten.com",
     "stun.ekiga.net",
-    "stun.fwd.org",
     "stun.voxalot.com.au",
     "stun1.noc.ams-ix.net",
     "stun.sipgate.net",
@@ -57,9 +56,8 @@ int stun_test_one(int sock, struct sockaddr_in *src,
                     struct sockaddr_in *dst, struct stun_msg *msg);
 int stun_read_msg(u8 *data, size_t len, struct stun_msg *msg);
 int stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg);
-int stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, 
-                            struct sockaddr_in *sin);
-
+int stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, u32 attr_len,
+                                struct sockaddr_in *sin);
 const char *
 stun_pick_rnd_server(void)
 {
@@ -126,9 +124,10 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
             break;
         } else {
             if (memcmp(&dst->sin_addr, &from.sin_addr, 
-                        sizeof(struct in_addr)) != 0) {
-                ERROR("received reply from invalid source\n");
-                return FAILURE;
+                        sizeof(struct in_addr))) {
+                ERROR("received reply from invalid source %s\n", 
+                        inet_ntoa(from.sin_addr));
+                continue;
             }
 
             if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
@@ -234,7 +233,7 @@ stun_read_msg(u8 *data, size_t len, struct stun_msg *msg)
     msg->hdr.len = ntohs(hdr->len);
     memcpy(msg->hdr.trans_id, hdr->trans_id, 16);
 
-    ret = stun_read_attrs(hdr + 1, msg->hdr.len, msg);
+    ret = stun_read_attrs((u8 *)(hdr + 1), msg->hdr.len, msg);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -248,47 +247,59 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
     struct stun_tlv *tlv = NULL;
     u16 tlen = 0;
     int ret;
+    struct sockaddr_in *addr = NULL;
 
     ASSERT(data && len && msg);
 
     tlv = (struct stun_tlv *)data;
 
     while (len > 0) {
+        addr = NULL;
+        DEBUG("len %d\n", len);
+
         switch (ntohs(tlv->type)) {
             case MAPPED_ADDRESS:
-                /* parse the inet address */
-                if (ntohs(tlv->len) != 8) {
-                    ASSERT(0);
-                }
-                ret = stun_read_inetaddr_attr((struct stun_inetaddr_attr *)tlv->val,
-                                            &msg->map_addr);
-                if (ret != SUCCESS) {
-                    break;
-                }
+                addr = &msg->map_addr;
                 break;
             case RESPONSE_ADDRESS:
+                addr = &msg->rsp_addr;
+                break;
             case SOURCE_ADDRESS:
+                addr = &msg->src_addr;
+                break;
             case CHANGED_ADDRESS:
+                addr = &msg->chg_addr;
+                break;
             case REFLECTED_FROM:
+                addr = &msg->ref_frm;
+                break;
             case XOR_MAPPED_ADDRESS:
+                addr = &msg->xor_map_addr;
+                break;
             case SERVER:
+                memcpy(msg->server, tlv->val, ntohs(tlv->len));
+                DEBUG("%s\n", msg->server);
+                break;
             case ALTERNATE_SERVER:
-                /* parse the inet address */
-                if (ntohs(tlv->len) != 8) {
-                    break;
-                }
-                ret = stun_read_inetaddr_attr((struct stun_inetaddr_attr *)tlv->val,
-                                            &msg->alt_server);
-                if (ret != SUCCESS) {
-                    break;
-                }
+                addr = &msg->alt_server;
                 break;
             default:
                 /* we don't handle this, just skip over */
                 break;
         }
 
-        tlen = ntohs(tlv->len) + sizeof(struct stun_tlv);
+        if (addr) {
+            ret = stun_read_inetaddr_attr(
+                    (struct stun_inetaddr_attr *)tlv->val,
+                    ntohs(tlv->len),
+                    addr);
+            if (ret != SUCCESS) {
+                return ret;
+            }
+            DEBUG("%s\n", inet_ntoa(addr->sin_addr));
+        }
+
+        tlen = sizeof(struct stun_tlv) + ntohs(tlv->len);
         len -= tlen; 
 
         tlv = (void *)tlv + tlen;
@@ -298,10 +309,14 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
 }
 
 int
-stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, 
+stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, u32 attr_len,
                             struct sockaddr_in *sin)
 {
-    ASSERT(attr && sin);
+    ASSERT(attr && attr_len && sin);
+
+    if (attr_len != 8) {
+        return FAILURE;
+    }
 
     bzero(sin, sizeof(struct sockaddr_in));
 
@@ -376,6 +391,7 @@ stun_get_nat_info(struct stun_nat_info *info)
                                 &dst, &msg);
         if (ret != SUCCESS) {
             if (msg.nat_type == STUN_FIREWALLED) {
+                INFO("UDP Firewall blocking packets!\n");
                 break;
             }
             continue;
