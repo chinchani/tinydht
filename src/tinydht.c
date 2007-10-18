@@ -157,6 +157,7 @@ tinydht_init(void)
 {
     int ret;
     int i;
+    int count = 0;
     
     /* initialize the signal handlers */
     ret = tinydht_init_sighandlers();
@@ -177,12 +178,20 @@ tinydht_init(void)
         return EXIT_FAILURE;
     }
 
+    count = 0;
+
     for (i = 0; i < n_rpc_ifs; i++) {
         ret = tinydht_get_intf_ext_ip_addr(&rpc_if[i]);
         if (ret != SUCCESS) {
             /* FIXME: should we abort here? */
             continue;
         }
+        count++;
+    }
+
+    if (count == 0) {
+        ERROR("No interfaces can reach public Internet!\n");
+        return FAILURE;
     }
 
     /* initialize the task list */
@@ -364,6 +373,12 @@ tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
             ret = stun_get_nat_info(&nat_info);
             if (ret != SUCCESS) {
                 return ret;
+            }
+
+            /* a DHT is useless behind a firewall */
+            if (nat_info.nat_type == STUN_FIREWALLED) {
+                INFO("UDP Firewall blocking packets!\n");
+                return FAILURE;
             }
 
             INFO("TinyDHT RPC Public IP %s\n", 

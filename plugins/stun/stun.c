@@ -47,18 +47,13 @@ static const char *stun_server_list[] = {
     "stun.voxalot.com.au",
     "stun1.noc.ams-ix.net",
     "stun.sipgate.net",
-    "stun.voip.eutelia.it"
+    "stun.voip.eutelia.it",
+    "stun.fwd.org"
 };
 
 static const size_t n_stun_servers = sizeof(stun_server_list)/sizeof(char *);
 
-int stun_test_one(int sock, struct sockaddr_in *src, 
-                    struct sockaddr_in *dst, struct stun_msg *msg);
-int stun_read_msg(u8 *data, size_t len, struct stun_msg *msg);
-int stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg);
-int stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, u32 attr_len,
-                                struct sockaddr_in *sin);
-const char *
+static const char *
 stun_pick_rnd_server(void)
 {
     u16 index = 0;
@@ -72,7 +67,7 @@ stun_pick_rnd_server(void)
     return stun_server_list[index % n_stun_servers];
 }
 
-int
+static int
 stun_send_and_receive(int sock, struct sockaddr_in *dst, 
                         u8 *in, size_t inlen, struct sockaddr_in *src, 
                         u8 *out, size_t *outlen)
@@ -83,6 +78,7 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
     u8 buf[512];
     struct timespec ts;
     u64 t = 0;
+    struct stun_msg_hdr *hdr = NULL;
 
     ASSERT(sock && dst && in && inlen && src && out && outlen);
 
@@ -90,6 +86,14 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
     t = 0;
 
     while (t < MAX_STUN_TIMEOUT) {
+        /* set a random transaction id */
+        hdr = (struct stun_msg_hdr *)in;
+        ret = crypto_get_rnd_bytes(hdr->trans_id, sizeof(hdr->trans_id));
+        if (ret != SUCCESS) {
+            return FAILURE;
+        }
+
+        pkt_dump_data(in, inlen);
 
         ret = sendto(sock, in, inlen, 0, (struct sockaddr *)dst, 
                 sizeof(struct sockaddr_in));
@@ -109,6 +113,7 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
         errno = 0;
         fromlen = sizeof(from);
 
+recv:
         ret = recvfrom(sock, buf, sizeof(buf), MSG_DONTWAIT, 
                 (struct sockaddr *)&from, &fromlen);
 
@@ -132,13 +137,16 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
 
             if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
                         ((struct stun_msg_hdr *)buf)->trans_id, 16)) {
-                ERROR("invalid transaction id\n");
-                return FAILURE;
+                DEBUG("invalid transaction id\n");
+                /* drain everything before sending a new request */
+                goto recv;
             }
 
             *outlen = ret;
             memcpy(out, buf, *outlen);
             memcpy(src, &from, sizeof(struct sockaddr_in));
+
+            pkt_dump_data(out, *outlen);
 
             return SUCCESS;
         }
@@ -149,99 +157,31 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
     return FAILURE;
 }
 
-int
-stun_test_one(int sock, struct sockaddr_in *src, 
-                    struct sockaddr_in *dst, struct stun_msg *msg)
+static int
+stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, u32 attr_len,
+                            struct sockaddr_in *sin)
 {
-    u8 req[512], rsp[512];
-    struct stun_msg_hdr *hdr = NULL;
-    size_t rsp_len;
-    int ret;
-    struct sockaddr_in from;
+    ASSERT(attr && attr_len && sin);
 
-    ASSERT(sock && dst && msg);
-
-    bzero(req, sizeof(req));
-
-    hdr = (struct stun_msg_hdr *)req;
-    hdr->type = ntohs(BINDING_REQUEST);
-    ret = crypto_get_rnd_bytes(&hdr->trans_id, sizeof(hdr->trans_id));
-    if (ret != SUCCESS) {
-        return FAILURE;
-    }
-    hdr->len = 0;
-
-    pkt_dump_data(req, sizeof(struct stun_msg_hdr));
-
-    ret = stun_send_and_receive(sock, dst, req, sizeof(struct stun_msg_hdr), 
-                                    &from, rsp, &rsp_len);
-    if (ret != SUCCESS) {
-        msg->nat_type = STUN_FIREWALLED;
-        return ret;
-    }
-
-    pkt_dump_data(rsp, rsp_len);
-
-    ret = stun_read_msg(rsp, rsp_len, msg);
-    if (ret != SUCCESS) {
-        return ret;
-    }
-
-    /* FIXME: change this to conform to rfc */
-    if (msg->hdr.type == BINDING_ERROR_RESPONSE) {
+    /* FIXME: include support for IPv6 addresses! */
+    if (attr_len != 8) {
         return FAILURE;
     }
 
-    if (msg->hdr.type != BINDING_RESPONSE) {
+    bzero(sin, sizeof(struct sockaddr_in));
+
+    if (ntohs(attr->family) != STUN_INETADDR4_TYPE) {
         return FAILURE;
     }
 
-    if (!memcmp(src, &msg->map_addr, sizeof(struct sockaddr_in))) {
-        msg->nat_type = STUN_NO_NAT;
-        INFO("possibly no NAT\n");
-    }
+    sin->sin_family = AF_INET;
+    sin->sin_port = ntohs(attr->port);
+    memcpy(&sin->sin_addr.s_addr, attr->addr, sizeof(u32));
 
     return SUCCESS;
 }
 
-int
-stun_test_two(int sock, struct sockaddr_in *dst)
-{
-    ASSERT(sock && dst);
-
-    return SUCCESS;
-}
-
-int
-stun_test_three(int sock, struct sockaddr_in *dst)
-{
-    ASSERT(sock && dst);
-
-    return SUCCESS;
-}
-
-int
-stun_read_msg(u8 *data, size_t len, struct stun_msg *msg)
-{
-    struct stun_msg_hdr *hdr = NULL;
-    int ret;
-
-    ASSERT(data && len && msg);
-
-    hdr = (struct stun_msg_hdr *)data;
-    msg->hdr.type = ntohs(hdr->type);
-    msg->hdr.len = ntohs(hdr->len);
-    memcpy(msg->hdr.trans_id, hdr->trans_id, 16);
-
-    ret = stun_read_attrs((u8 *)(hdr + 1), msg->hdr.len, msg);
-    if (ret != SUCCESS) {
-        return ret;
-    }
-
-    return SUCCESS;
-}
-
-int
+static int
 stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
 {
     struct stun_tlv *tlv = NULL;
@@ -308,28 +248,124 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
     return SUCCESS;
 }
 
-int
-stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, u32 attr_len,
-                            struct sockaddr_in *sin)
+static int
+stun_read_msg(u8 *data, size_t len, struct stun_msg *msg)
 {
-    ASSERT(attr && attr_len && sin);
+    struct stun_msg_hdr *hdr = NULL;
+    int ret;
 
-    if (attr_len != 8) {
-        return FAILURE;
+    ASSERT(data && len && msg);
+
+    hdr = (struct stun_msg_hdr *)data;
+    msg->hdr.type = ntohs(hdr->type);
+    msg->hdr.len = ntohs(hdr->len);
+    memcpy(msg->hdr.trans_id, hdr->trans_id, 16);
+
+    ret = stun_read_attrs((u8 *)(hdr + 1), msg->hdr.len, msg);
+    if (ret != SUCCESS) {
+        return ret;
     }
-
-    bzero(sin, sizeof(struct sockaddr_in));
-
-    if (ntohs(attr->family) != STUN_INETADDR4_TYPE) {
-        return FAILURE;
-    }
-
-    sin->sin_family = AF_INET;
-    sin->sin_port = ntohs(attr->port);
-    memcpy(&sin->sin_addr.s_addr, attr->addr, sizeof(u32));
 
     return SUCCESS;
 }
+
+static int
+stun_test_one(int sock, struct sockaddr_in *src, 
+                    struct sockaddr_in *dst, struct stun_msg *msg)
+{
+    u8 req[512], rsp[512];
+    struct stun_msg_hdr *hdr = NULL;
+    size_t req_len = 0, rsp_len = 0;
+    int ret;
+    struct sockaddr_in from;
+
+    ASSERT(sock && src && dst && msg);
+
+    bzero(req, sizeof(req));
+
+    hdr = (struct stun_msg_hdr *)req;
+    hdr->type = ntohs(BINDING_REQUEST);
+
+    req_len += sizeof(struct stun_msg_hdr);
+
+    hdr->len = htons(req_len - sizeof(struct stun_msg_hdr));
+
+    ret = stun_send_and_receive(sock, dst, req, req_len, &from, rsp, &rsp_len);
+    if (ret != SUCCESS) {
+        msg->nat_type = STUN_FIREWALLED;
+        return ret;
+    }
+
+    ret = stun_read_msg(rsp, rsp_len, msg);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    /* FIXME: change this to conform to rfc */
+    if (msg->hdr.type == BINDING_ERROR_RESPONSE) {
+        return FAILURE;
+    }
+
+    if (msg->hdr.type != BINDING_RESPONSE) {
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+static int
+stun_test_two(int sock, struct sockaddr_in *src, 
+                    struct sockaddr_in *dst, struct stun_msg *msg)
+{
+    u8 req[512], rsp[512];
+    struct stun_msg_hdr *hdr = NULL;
+    struct stun_chg_req_attr *chg_req = NULL;
+    size_t req_len = 0, rsp_len = 0;
+    struct stun_tlv *tlv = NULL;
+    int ret;
+    struct sockaddr_in from;
+
+    ASSERT(sock && src && dst && msg);
+
+    bzero(req, sizeof(req));
+
+    hdr = (struct stun_msg_hdr *)req;
+    hdr->type = ntohs(BINDING_REQUEST);
+
+    req_len += sizeof(struct stun_msg_hdr);
+
+    tlv = (struct stun_tlv *)(hdr + 1);
+    tlv->type = htons(CHANGE_REQUEST);
+    tlv->len = htons(sizeof(struct stun_chg_req_attr));
+
+    req_len += sizeof(struct stun_tlv);
+
+    /* CHANGE REQUEST attribute */
+    chg_req = (struct stun_chg_req_attr *)(tlv + 1);
+    bzero(chg_req, sizeof(struct stun_chg_req_attr));
+    chg_req->flags = htonl(CHANGE_IP_MASK | CHANGE_PORT_MASK);
+
+    req_len += sizeof(struct stun_chg_req_attr);
+
+    hdr->len = htons(req_len - sizeof(struct stun_msg_hdr));
+
+    ret = stun_send_and_receive(sock, dst, req, req_len, &from, rsp, &rsp_len);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    return SUCCESS;
+}
+
+static int
+stun_test_three(int sock, struct sockaddr_in *src, 
+                    struct sockaddr_in *dst, struct stun_msg *msg)
+{
+    ASSERT(sock && src && dst && msg);
+
+    return SUCCESS;
+}
+
 
 int
 stun_get_nat_info(struct stun_nat_info *info)
@@ -390,28 +426,47 @@ stun_get_nat_info(struct stun_nat_info *info)
         ret = stun_test_one(sock, (struct sockaddr_in *)&info->internal, 
                                 &dst, &msg);
         if (ret != SUCCESS) {
-            if (msg.nat_type == STUN_FIREWALLED) {
-                INFO("UDP Firewall blocking packets!\n");
-                break;
-            }
-            continue;
+            info->nat_type = STUN_FIREWALLED;
+            return SUCCESS;
         } 
+        
+        if (!memcmp(&info->internal, &msg.map_addr, 
+                    sizeof(struct sockaddr_in))) {
+            /* internal and external address are same! */
+            ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
+                                    &dst, &msg);
+            if (ret != SUCCESS) {
+                info->nat_type = STUN_NAT_SYMMETRIC;
+            } else {
+                info->nat_type = STUN_NO_NAT;
+            }
+
+            return SUCCESS;
+
+        } else {
+            /* internal and external address are _not_ the same! */
+            memcpy(&info->external, &msg.map_addr, sizeof(struct sockaddr_in));
+
+            ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
+                                    &dst, &msg);
+            if (ret == SUCCESS) {
+                info->nat_type = STUN_NAT_FULL_CONE;
+                return SUCCESS;
+            }
+
+            return SUCCESS;
+        }
+
         /*
          * FIXME: two more tests to figure out the nat type 
          *
         ret = stun_test_two();
         ret = stun_test_three();
         */
-        
-        else {
-            memcpy(&info->external, &msg.map_addr, sizeof(struct sockaddr_in));
-            break;
-        }
     }
 
     return SUCCESS;
 }
-
 
 /*
 

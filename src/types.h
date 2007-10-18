@@ -47,7 +47,7 @@ typedef u8          bool;
 #define ZERO        (0)
 #define ONE         (1)
 
-#define BIT32(x)        ((uint32)(1) << x)
+#define BIT32(x)        ((u32)(1) << x)
 
 extern uint64_t ntoh64 (uint64_t __netlong) 
     __THROW __attribute__ ((__const__));
@@ -78,4 +78,17 @@ extern uint64_t hton64 (uint64_t __hostlong)
   const typeof( ((type *)0)->member ) *__mptr = (ptr);  \
   (type *)( (char *)__mptr - offsetof(type,member) );})
 
+#define NANOSLEEP(nanoseconds)                                  \
+        do {                                                    \
+                struct timespec ts;                             \
+                                                                \
+                bzero(&ts, sizeof(ts));                         \
+                ts.tv_sec = nanoseconds/(1000*1000*1000);       \
+                ts.tv_nsec = nanoseconds % (1000*1000*1000);    \
+        } while(0)
+
+#define MICROSLEEP(x)   NANOSLEEP((x)*1000)
+#define MILLISLEEP(x)   NANOSLEEP((x)*1000*1000)
+
 #endif /* __TYPES_H__ */
+
