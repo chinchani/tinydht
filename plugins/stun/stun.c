@@ -175,7 +175,7 @@ stun_read_inetaddr_attr(struct stun_inetaddr_attr *attr, u32 attr_len,
     }
 
     sin->sin_family = AF_INET;
-    sin->sin_port = ntohs(attr->port);
+    sin->sin_port = attr->port;
     memcpy(&sin->sin_addr.s_addr, attr->addr, sizeof(u32));
 
     return SUCCESS;
@@ -236,7 +236,7 @@ stun_read_attrs(u8 *data, size_t len, struct stun_msg *msg)
             if (ret != SUCCESS) {
                 return ret;
             }
-            DEBUG("%s\n", inet_ntoa(addr->sin_addr));
+            DEBUG("%s:%hu\n", inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
         }
 
         tlen = sizeof(struct stun_tlv) + ntohs(tlv->len);
@@ -375,7 +375,7 @@ stun_get_nat_info(struct stun_nat_info *info)
     const char *server = NULL;
     struct hostent *he = NULL;
     struct sockaddr_in dst;
-    struct stun_msg msg;
+    struct stun_msg msg1, msg2;
 
     ASSERT(info);
 
@@ -421,41 +421,63 @@ stun_get_nat_info(struct stun_nat_info *info)
         dst.sin_port = htons(STUN_SERVICE);
         memcpy(&dst.sin_addr.s_addr, he->h_addr, sizeof(struct in_addr));
 
-        bzero(&msg, sizeof(msg));
+        bzero(&msg1, sizeof(msg1));
 
         ret = stun_test_one(sock, (struct sockaddr_in *)&info->internal, 
-                                &dst, &msg);
+                                &dst, &msg1);
         if (ret != SUCCESS) {
             info->nat_type = STUN_FIREWALLED;
             return SUCCESS;
         } 
         
-        if (!memcmp(&info->internal, &msg.map_addr, 
-                    sizeof(struct sockaddr_in))) {
-            /* internal and external address are same! */
+        memcpy(&info->external, &msg1.map_addr, sizeof(struct sockaddr_in));
+
+        /* internal and external address are same! */
+        if (!memcmp(&info->internal, &msg1.map_addr, 
+                        sizeof(struct sockaddr_in))) {
+            bzero(&msg2, sizeof(msg2));
+
             ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
-                                    &dst, &msg);
-            if (ret != SUCCESS) {
-                info->nat_type = STUN_NAT_SYMMETRIC;
-            } else {
+                                    &dst, &msg2);
+            if (ret == SUCCESS) {
                 info->nat_type = STUN_NO_NAT;
+            } else {
+                info->nat_type = STUN_NAT_SYMMETRIC;
             }
 
             return SUCCESS;
+        } 
 
-        } else {
-            /* internal and external address are _not_ the same! */
-            memcpy(&info->external, &msg.map_addr, sizeof(struct sockaddr_in));
+        /* internal and external address are _not_ the same! */
+        bzero(&msg2, sizeof(msg2));
 
-            ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
-                                    &dst, &msg);
-            if (ret == SUCCESS) {
-                info->nat_type = STUN_NAT_FULL_CONE;
-                return SUCCESS;
-            }
-
+        ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
+                                &dst, &msg2);
+        if (ret == SUCCESS) {
+            info->nat_type = STUN_NAT_FULL_CONE;
             return SUCCESS;
         }
+
+        /* did not receive a reply */
+        bzero(&msg2, sizeof(msg2));
+
+        DEBUG("chg_addr %s:%hu\n", inet_ntoa(msg1.chg_addr.sin_addr), ntohs(msg1.chg_addr.sin_port));
+
+        ret = stun_test_one(sock, (struct sockaddr_in *)&info->internal, 
+                                (struct sockaddr_in *)&msg1.chg_addr, &msg2);
+        if (ret != SUCCESS) {
+            /* FIXME: we should always get a reply here? */
+        }
+
+        if (memcmp(&msg1.map_addr, &msg2.map_addr, 
+                            sizeof(struct sockaddr_in))) {
+            info->nat_type = STUN_NAT_SYMMETRIC;
+            return SUCCESS;
+        }
+
+        DEBUG("*** test 3?? ***\n");
+
+        return SUCCESS;
 
         /*
          * FIXME: two more tests to figure out the nat type 
