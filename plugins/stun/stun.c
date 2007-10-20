@@ -361,11 +361,45 @@ static int
 stun_test_three(int sock, struct sockaddr_in *src, 
                     struct sockaddr_in *dst, struct stun_msg *msg)
 {
+    u8 req[512], rsp[512];
+    struct stun_msg_hdr *hdr = NULL;
+    struct stun_chg_req_attr *chg_req = NULL;
+    size_t req_len = 0, rsp_len = 0;
+    struct stun_tlv *tlv = NULL;
+    int ret;
+    struct sockaddr_in from;
+
     ASSERT(sock && src && dst && msg);
+
+    bzero(req, sizeof(req));
+
+    hdr = (struct stun_msg_hdr *)req;
+    hdr->type = ntohs(BINDING_REQUEST);
+
+    req_len += sizeof(struct stun_msg_hdr);
+
+    tlv = (struct stun_tlv *)(hdr + 1);
+    tlv->type = htons(CHANGE_REQUEST);
+    tlv->len = htons(sizeof(struct stun_chg_req_attr));
+
+    req_len += sizeof(struct stun_tlv);
+
+    /* CHANGE REQUEST attribute */
+    chg_req = (struct stun_chg_req_attr *)(tlv + 1);
+    bzero(chg_req, sizeof(struct stun_chg_req_attr));
+    chg_req->flags = htonl(CHANGE_PORT_MASK);
+
+    req_len += sizeof(struct stun_chg_req_attr);
+
+    hdr->len = htons(req_len - sizeof(struct stun_msg_hdr));
+
+    ret = stun_send_and_receive(sock, dst, req, req_len, &from, rsp, &rsp_len);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
     return SUCCESS;
 }
-
 
 int
 stun_get_nat_info(struct stun_nat_info *info)
@@ -375,7 +409,7 @@ stun_get_nat_info(struct stun_nat_info *info)
     const char *server = NULL;
     struct hostent *he = NULL;
     struct sockaddr_in dst;
-    struct stun_msg msg1, msg2;
+    struct stun_msg msg1, msg2, msg3;
 
     ASSERT(info);
 
@@ -415,7 +449,7 @@ stun_get_nat_info(struct stun_nat_info *info)
             continue;
         }
 
-        /* FIXME: do the stun tests here */
+        /* stun tests I, II and III */
         bzero(&dst, sizeof(dst));
         dst.sin_family = AF_INET;
         dst.sin_port = htons(STUN_SERVICE);
@@ -426,6 +460,7 @@ stun_get_nat_info(struct stun_nat_info *info)
         ret = stun_test_one(sock, (struct sockaddr_in *)&info->internal, 
                                 &dst, &msg1);
         if (ret != SUCCESS) {
+            DEBUG("STUN_FIREWALLED\n");
             info->nat_type = STUN_FIREWALLED;
             return SUCCESS;
         } 
@@ -440,8 +475,10 @@ stun_get_nat_info(struct stun_nat_info *info)
             ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
                                     &dst, &msg2);
             if (ret == SUCCESS) {
+                DEBUG("STUN_NO_NAT\n");
                 info->nat_type = STUN_NO_NAT;
             } else {
+                DEBUG("STUN_NAT_SYMMETRIC\n");
                 info->nat_type = STUN_NAT_SYMMETRIC;
             }
 
@@ -454,14 +491,13 @@ stun_get_nat_info(struct stun_nat_info *info)
         ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
                                 &dst, &msg2);
         if (ret == SUCCESS) {
+            DEBUG("STUN_NAT_FULL_CONE\n");
             info->nat_type = STUN_NAT_FULL_CONE;
             return SUCCESS;
         }
 
         /* did not receive a reply */
         bzero(&msg2, sizeof(msg2));
-
-        DEBUG("chg_addr %s:%hu\n", inet_ntoa(msg1.chg_addr.sin_addr), ntohs(msg1.chg_addr.sin_port));
 
         ret = stun_test_one(sock, (struct sockaddr_in *)&info->internal, 
                                 (struct sockaddr_in *)&msg1.chg_addr, &msg2);
@@ -471,20 +507,25 @@ stun_get_nat_info(struct stun_nat_info *info)
 
         if (memcmp(&msg1.map_addr, &msg2.map_addr, 
                             sizeof(struct sockaddr_in))) {
+            DEBUG("STUN_NAT_SYMMETRIC\n");
             info->nat_type = STUN_NAT_SYMMETRIC;
             return SUCCESS;
         }
 
-        DEBUG("*** test 3?? ***\n");
+        /* test III */
+        bzero(&msg3, sizeof(msg3));
+
+        ret = stun_test_three(sock, (struct sockaddr_in *)&info->internal,
+                                    &dst, &msg3);
+        if (ret == SUCCESS) {
+            DEBUG("STUN_NAT_RESTRICTED_CONE\n");
+            info->nat_type = STUN_NAT_RESTRICTED_CONE;
+        } else {
+            DEBUG("STUN_NAT_PORT_RESTRICTED_CONE\n");
+            info->nat_type = STUN_NAT_PORT_RESTRICTED_CONE;
+        }
 
         return SUCCESS;
-
-        /*
-         * FIXME: two more tests to figure out the nat type 
-         *
-        ret = stun_test_two();
-        ret = stun_test_three();
-        */
     }
 
     return SUCCESS;
