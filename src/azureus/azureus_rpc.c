@@ -33,6 +33,7 @@
 #include "types.h"
 #include "tinydht.h"
 #include "azureus_vivaldi.h"
+#include "node.h"
 
 static int is_valid_rpc_action(u32 action);
 static int is_valid_rpc_req_action(u32 action);
@@ -939,10 +940,12 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
 {
     struct azureus_dht *ad = NULL;
     u32 rnd_id;
-    u32 i;
+    struct azureus_node *azn = NULL;
     int ret;
 
     ASSERT(msg);
+
+    TAILQ_INIT(&msg->m.find_node_rsp.node_list);
 
     ret = azureus_rpc_udp_rsp_encode(msg);
     if (ret != SUCCESS) {
@@ -991,6 +994,14 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
         return ret;
     }
 
+    TAILQ_FOREACH(azn, &msg->m.find_node_rsp.node_list, next) {
+        ret = azureus_pkt_write_node(&msg->pkt, azn);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    }
+
+#if 0
     for (i = 0; i < msg->m.find_node_rsp.n_nodes; i++) {
         ret = azureus_pkt_write_node(&msg->pkt, 
                                         &msg->m.find_node_rsp.nodes[i]);
@@ -998,6 +1009,7 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
             return ret;
         }
     }
+#endif
 
     return SUCCESS;
 }
@@ -1010,10 +1022,13 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
     u32 rnd_id;
     u32 node_status;
     u32 est_dht_size = 0;
-    u32 i;
+    u32 i = 0;
+    struct azureus_node azn, *pazn = NULL;
     int ret;
 
     ASSERT(msg);
+
+    TAILQ_INIT(&msg->m.find_node_rsp.node_list);
 
     ret = azureus_rpc_udp_rsp_decode(msg);
     if (ret != SUCCESS) {
@@ -1066,11 +1081,19 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
         return ret;
     }
 
+
     for (i = 0; i < msg->m.find_node_rsp.n_nodes; i++) {
-        ret = azureus_pkt_read_node(&msg->pkt, &msg->m.find_node_rsp.nodes[i]);
+        ret = azureus_pkt_read_node(&msg->pkt, &azn);
         if (ret != SUCCESS) {
             return ret;
         }
+
+        pazn = azureus_node_new(azn.proto_ver, &azn.ext_addr);
+        if (!pazn) {
+            return FAILURE;
+        }
+
+        TAILQ_INSERT_TAIL(&msg->m.find_node_rsp.node_list, pazn, next);
     }
 
     return SUCCESS;
@@ -1171,11 +1194,13 @@ azureus_rpc_find_value_req_decode(struct azureus_rpc_msg *msg)
 static int
 azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
 {
-    int ret;
     struct azureus_dht *ad = NULL;
-    int i;
+    struct azureus_node *azn = NULL;
+    int ret;
 
     ASSERT(msg);
+
+    TAILQ_INIT(&msg->m.find_value_rsp.node_list);
 
     ret = azureus_rpc_udp_rsp_encode(msg);
     if (ret != SUCCESS) {
@@ -1203,9 +1228,8 @@ azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
             return ret;
         }
 
-        for (i = 0; i < msg->m.find_value_rsp.n_nodes; i++) {
-            ret = azureus_pkt_write_node(&msg->pkt, 
-                                            &msg->m.find_value_rsp.nodes[i]);
+        TAILQ_FOREACH(azn, &msg->m.find_value_rsp.node_list, next) {
+            ret = azureus_pkt_write_node(&msg->pkt, azn);
             if (ret != SUCCESS) {
                 return ret;
             }
@@ -1240,9 +1264,10 @@ azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
 static int
 azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
 {
-    int ret;
     struct azureus_dht *ad = NULL;
-    int i;
+    struct azureus_node azn, *pazn = NULL;
+    u32 i;
+    int ret;
 
     ASSERT(msg);
 
@@ -1273,11 +1298,17 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
         }
 
         for (i = 0; i < msg->m.find_value_rsp.n_nodes; i++) {
-            ret = azureus_pkt_read_node(&msg->pkt, 
-                                            &msg->m.find_value_rsp.nodes[i]);
+            ret = azureus_pkt_read_node(&msg->pkt, &azn);
             if (ret != SUCCESS) {
                 return ret;
             }
+
+            pazn = azureus_node_new(azn.proto_ver, &azn.ext_addr);
+            if (!pazn) {
+                return FAILURE;
+            }
+
+            TAILQ_INSERT_TAIL(&msg->m.find_value_rsp.node_list, pazn, next);
         }
 #if 0
         /* serialize vivaldi */

@@ -130,14 +130,15 @@ recv:
         } else {
             if (memcmp(&dst->sin_addr, &from.sin_addr, 
                         sizeof(struct in_addr))) {
-                ERROR("received reply from invalid source %s\n", 
-                        inet_ntoa(from.sin_addr));
+                ERROR("expected reply from %s:%hu, instead got from %s:%hu\n",
+                        inet_ntoa(dst->sin_addr), ntohs(dst->sin_port),
+                        inet_ntoa(from.sin_addr), ntohs(from.sin_port));
                 continue;
             }
 
             if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
                         ((struct stun_msg_hdr *)buf)->trans_id, 16)) {
-                DEBUG("invalid transaction id\n");
+                DEBUG("invalid transaction id, ignoring reply\n");
                 /* drain everything before sending a new request */
                 goto recv;
             }
@@ -512,7 +513,6 @@ stun_get_nat_info(struct stun_nat_info *info)
             return SUCCESS;
         }
 
-        /* test III */
         bzero(&msg3, sizeof(msg3));
 
         ret = stun_test_three(sock, (struct sockaddr_in *)&info->internal,

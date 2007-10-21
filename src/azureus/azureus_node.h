@@ -38,13 +38,14 @@ struct azureus_vivaldi_coords {
 };
 
 struct azureus_node {
-    struct node                     node;
-    struct sockaddr_storage         ext_addr;
-    enum azureus_node_status        node_status;
-    u8                              proto_ver;
-    u64                             skew;
-    u32                             rnd_id;         /* anti-spoof */
-    struct azureus_vivaldi_coords   viv;
+    struct node                         node;
+    struct sockaddr_storage             ext_addr;
+    enum azureus_node_status            node_status;
+    u8                                  proto_ver;
+    u64                                 skew;
+    u32                                 rnd_id;         /* anti-spoof */
+    struct azureus_vivaldi_coords       viv;
+    TAILQ_ENTRY(azureus_node)           next;
 };
 
 struct azureus_node_serialized {

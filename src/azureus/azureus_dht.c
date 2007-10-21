@@ -20,12 +20,14 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "azureus_dht.h"
 #include "dht_types.h"
 #include "types.h"
 #include "crypto.h"
 #include "azureus_rpc.h"
+#include "azureus_db.h"
 
 struct dht *
 azureus_dht_new(struct dht_net_if *nif, int port)

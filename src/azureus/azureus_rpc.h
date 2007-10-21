@@ -23,9 +23,11 @@
 
 #include "types.h"
 #include "pkt.h"
+#include "queue.h"
 #include "azureus_node.h"
 #include "azureus_db.h"
 #include "azureus_vivaldi.h"
+#include "node.h"
 
 enum azureus_protocol_version {
    PROTOCOL_VERSION_2304 = 8,
@@ -98,9 +100,11 @@ enum azureus_contact_type {
 #define MAX_RPC_MSG_NODES       16
 #define MAX_RPC_VIVALDI_POS     4
 
-/* PR UDP Request */
+/* PR UDP Request 
+    connection id    (0x8000000000000000L | rnd) 
+**/
 struct azureus_pr_udp_req {
-    u64                         conn_id;    /* connection id    (0x8000000000000000L | rnd) */
+    u64                         conn_id;    
     u32                         action;     /* action           */
     u32                         trans_id;   /* transaction id   */
 };
@@ -150,7 +154,7 @@ struct azureus_rpc_find_node_rsp {
     u32                         rnd_id;
     u32                         node_status;
     u16                         n_nodes;
-    struct azureus_node         nodes[AZUREUS_RPC_MAX_NODES];
+    TAILQ_HEAD(find_node_rsp_node_list_head, azureus_node) node_list;
     u32                         est_dht_size;
 };
 
@@ -168,8 +172,7 @@ struct azureus_rpc_find_value_rsp {
     struct azureus_db_valset    valset;
     u8                          div_type;   /* diversification type */
     u16                         n_nodes;
-    /* FIXME: make this a TAILQ? 6K */
-    struct azureus_node         nodes[AZUREUS_RPC_MAX_NODES];
+    TAILQ_HEAD(find_value_rsp_node_list_head, azureus_node) node_list;
 };
 
 /* store value request/response */
@@ -178,8 +181,10 @@ struct azureus_rpc_store_value_req {
     u8                          n_keys;
     /* FIXME: make this a TAILQ? 17M!! */ 
     struct azureus_db_key       key[AZUREUS_MAX_KEYS_PER_PKT];
+    TAILQ_HEAD(store_value_req_key_list_head, azureus_db_key) key_list;
     u8                          n_valsets;
     struct azureus_db_valset    valset[AZUREUS_MAX_KEYS_PER_PKT];
+    TAILQ_HEAD(store_value_req_valset_list_head, azureus_db_valset) valset_list;
 };
 
 struct azureus_rpc_store_value_rsp {

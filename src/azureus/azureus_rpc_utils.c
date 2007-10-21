@@ -320,7 +320,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val)
 int
 azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
 {
-    int i;
+    struct azureus_db_val *val = NULL;
     int ret;
 
     ASSERT(pkt && valset);
@@ -330,8 +330,8 @@ azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
         return ret;
     }
 
-    for (i = 0; i < valset->n_vals; i++) {
-        ret = azureus_pkt_write_db_val(pkt, &valset->val[i]);
+    TAILQ_FOREACH(val, &valset->val_list, next) {
+        ret = azureus_pkt_write_db_val(pkt, val);
         if (ret != SUCCESS) {
             return ret;
         }
@@ -344,6 +344,7 @@ int
 azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
 {
     int i;
+    struct azureus_db_val val, *pval = NULL;
     int ret;
 
     ASSERT(pkt && valset);
@@ -354,10 +355,17 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
     }
 
     for (i = 0; i < valset->n_vals; i++) {
-        ret = azureus_pkt_read_db_val(pkt, &valset->val[i]);
+        ret = azureus_pkt_read_db_val(pkt, &val);
         if (ret != SUCCESS) {
             return ret;
         }
+
+        pval = azureus_db_val_new(val.data, val.len);
+        if (!pval) {
+            return FAILURE;
+        }
+
+        TAILQ_INSERT_TAIL(&valset->val_list, pval, next);
     }
 
     return SUCCESS;
