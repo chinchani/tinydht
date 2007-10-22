@@ -33,7 +33,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = test$(EXEEXT)
+bin_PROGRAMS = get$(EXEEXT) put$(EXEEXT)
 subdir = test
 DIST_COMMON = $(noinst_HEADERS) $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in
@@ -47,11 +47,17 @@ CONFIG_CLEAN_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 binPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 PROGRAMS = $(bin_PROGRAMS)
-am_test_OBJECTS = test-client.$(OBJEXT)
-test_OBJECTS = $(am_test_OBJECTS)
-test_LDADD = $(LDADD)
-test_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
-	--mode=link $(CCLD) $(test_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
+am_get_OBJECTS = get-get.$(OBJEXT)
+get_OBJECTS = $(am_get_OBJECTS)
+get_LDADD = $(LDADD)
+get_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
+	--mode=link $(CCLD) $(get_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
+am_put_OBJECTS = put-put.$(OBJEXT)
+put_OBJECTS = $(am_put_OBJECTS)
+put_LDADD = $(LDADD)
+put_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
+	--mode=link $(CCLD) $(put_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 DEFAULT_INCLUDES = -I. -I$(top_builddir)@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
@@ -65,8 +71,8 @@ CCLD = $(CC)
 LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
-SOURCES = $(test_SOURCES)
-DIST_SOURCES = $(test_SOURCES)
+SOURCES = $(get_SOURCES) $(put_SOURCES)
+DIST_SOURCES = $(get_SOURCES) $(put_SOURCES)
 HEADERS = $(noinst_HEADERS)
 ETAGS = etags
 CTAGS = ctags
@@ -177,9 +183,17 @@ target_alias = @target_alias@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 METASOURCES = auto
-test_SOURCES = client.c
 noinst_HEADERS = 
-test_CFLAGS = -W -Wall -g -I$(top_srcdir)/src
+get_SOURCES = get.c
+get_CFLAGS = -W -Wall -g -O0 \
+	      -I$(top_srcdir)/test -I$(top_srcdir)/src \
+	      $(all_includes) 
+
+put_SOURCES = put.c
+put_CFLAGS = -W -Wall -g -O0 \
+	      -I$(top_srcdir)/test -I$(top_srcdir)/src \
+	      $(all_includes) 
+
 all: all-am
 
 .SUFFIXES:
@@ -241,9 +255,12 @@ clean-binPROGRAMS:
 	  echo " rm -f $$p $$f"; \
 	  rm -f $$p $$f ; \
 	done
-test$(EXEEXT): $(test_OBJECTS) $(test_DEPENDENCIES) 
-	@rm -f test$(EXEEXT)
-	$(test_LINK) $(test_OBJECTS) $(test_LDADD) $(LIBS)
+get$(EXEEXT): $(get_OBJECTS) $(get_DEPENDENCIES) 
+	@rm -f get$(EXEEXT)
+	$(get_LINK) $(get_OBJECTS) $(get_LDADD) $(LIBS)
+put$(EXEEXT): $(put_OBJECTS) $(put_DEPENDENCIES) 
+	@rm -f put$(EXEEXT)
+	$(put_LINK) $(put_OBJECTS) $(put_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -251,7 +268,8 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-client.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get-get.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/put-put.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -274,19 +292,33 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(LTCOMPILE) -c -o $@ $<
 
-test-client.o: client.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_CFLAGS) $(CFLAGS) -MT test-client.o -MD -MP -MF $(DEPDIR)/test-client.Tpo -c -o test-client.o `test -f 'client.c' || echo '$(srcdir)/'`client.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/test-client.Tpo $(DEPDIR)/test-client.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='client.c' object='test-client.o' libtool=no @AMDEPBACKSLASH@
+get-get.o: get.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_CFLAGS) $(CFLAGS) -MT get-get.o -MD -MP -MF $(DEPDIR)/get-get.Tpo -c -o get-get.o `test -f 'get.c' || echo '$(srcdir)/'`get.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/get-get.Tpo $(DEPDIR)/get-get.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='get.c' object='get-get.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_CFLAGS) $(CFLAGS) -c -o test-client.o `test -f 'client.c' || echo '$(srcdir)/'`client.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_CFLAGS) $(CFLAGS) -c -o get-get.o `test -f 'get.c' || echo '$(srcdir)/'`get.c
 
-test-client.obj: client.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_CFLAGS) $(CFLAGS) -MT test-client.obj -MD -MP -MF $(DEPDIR)/test-client.Tpo -c -o test-client.obj `if test -f 'client.c'; then $(CYGPATH_W) 'client.c'; else $(CYGPATH_W) '$(srcdir)/client.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/test-client.Tpo $(DEPDIR)/test-client.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='client.c' object='test-client.obj' libtool=no @AMDEPBACKSLASH@
+get-get.obj: get.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_CFLAGS) $(CFLAGS) -MT get-get.obj -MD -MP -MF $(DEPDIR)/get-get.Tpo -c -o get-get.obj `if test -f 'get.c'; then $(CYGPATH_W) 'get.c'; else $(CYGPATH_W) '$(srcdir)/get.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/get-get.Tpo $(DEPDIR)/get-get.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='get.c' object='get-get.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_CFLAGS) $(CFLAGS) -c -o test-client.obj `if test -f 'client.c'; then $(CYGPATH_W) 'client.c'; else $(CYGPATH_W) '$(srcdir)/client.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(get_CFLAGS) $(CFLAGS) -c -o get-get.obj `if test -f 'get.c'; then $(CYGPATH_W) 'get.c'; else $(CYGPATH_W) '$(srcdir)/get.c'; fi`
+
+put-put.o: put.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(put_CFLAGS) $(CFLAGS) -MT put-put.o -MD -MP -MF $(DEPDIR)/put-put.Tpo -c -o put-put.o `test -f 'put.c' || echo '$(srcdir)/'`put.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/put-put.Tpo $(DEPDIR)/put-put.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='put.c' object='put-put.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(put_CFLAGS) $(CFLAGS) -c -o put-put.o `test -f 'put.c' || echo '$(srcdir)/'`put.c
+
+put-put.obj: put.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(put_CFLAGS) $(CFLAGS) -MT put-put.obj -MD -MP -MF $(DEPDIR)/put-put.Tpo -c -o put-put.obj `if test -f 'put.c'; then $(CYGPATH_W) 'put.c'; else $(CYGPATH_W) '$(srcdir)/put.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/put-put.Tpo $(DEPDIR)/put-put.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='put.c' object='put-put.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(put_CFLAGS) $(CFLAGS) -c -o put-put.obj `if test -f 'put.c'; then $(CYGPATH_W) 'put.c'; else $(CYGPATH_W) '$(srcdir)/put.c'; fi`
 
 mostlyclean-libtool:
 	-rm -f *.lo

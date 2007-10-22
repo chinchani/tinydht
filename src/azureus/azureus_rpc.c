@@ -1346,11 +1346,15 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
 static int
 azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
 {
-    int i;
     struct azureus_dht *ad = NULL;
+    struct azureus_db_key *key = NULL;
+    struct azureus_db_valset *valset = NULL;
     int ret;
 
     ASSERT(msg);
+
+    TAILQ_INIT(&msg->m.store_value_req.key_list);
+    TAILQ_INIT(&msg->m.store_value_req.valset_list);
 
     ret = azureus_rpc_udp_rsp_encode(msg);
     if (ret != SUCCESS) {
@@ -1371,9 +1375,8 @@ azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
         return ret;
     }
 
-    for (i = 0; i < msg->m.store_value_req.n_keys; i++) {
-        ret = azureus_pkt_write_db_key(&msg->pkt, 
-                                        &msg->m.store_value_req.key[i]);
+    TAILQ_FOREACH(key, &msg->m.store_value_req.key_list, next) {
+        ret = azureus_pkt_write_db_key(&msg->pkt, key);
         if (ret != SUCCESS) {
             return ret;
         }
@@ -1384,9 +1387,8 @@ azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
         return ret;
     }
 
-    for (i = 0; i < msg->m.store_value_req.n_valsets; i++) {
-        ret = azureus_pkt_write_db_valset(&msg->pkt, 
-                                            &msg->m.store_value_req.valset[i]);
+    TAILQ_FOREACH(valset, &msg->m.store_value_req.valset_list, next) {
+        ret = azureus_pkt_write_db_valset(&msg->pkt, valset);
         if (ret != SUCCESS) {
             return ret;
         }
@@ -1405,9 +1407,14 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
 {
     int i;
     struct azureus_dht *ad = NULL;
+    struct azureus_db_key key, *pkey = NULL;
+    struct azureus_db_valset valset, *pvalset = NULL;
     int ret;
 
     ASSERT(msg);
+
+    TAILQ_INIT(&msg->m.store_value_req.key_list);
+    TAILQ_INIT(&msg->m.store_value_req.valset_list);
 
     ret = azureus_rpc_udp_rsp_decode(msg);
     if (ret != SUCCESS) {
@@ -1429,11 +1436,17 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     }
 
     for (i = 0; i < msg->m.store_value_req.n_keys; i++) {
-        ret = azureus_pkt_read_db_key(&msg->pkt, 
-                                        &msg->m.store_value_req.key[i]);
+        ret = azureus_pkt_read_db_key(&msg->pkt, &key);
         if (ret != SUCCESS) {
             return ret;
         }
+
+        pkey = azureus_db_key_new(key.data, key.len);
+        if (!pkey) {
+            return FAILURE;
+        }
+
+        TAILQ_INSERT_TAIL(&msg->m.store_value_req.key_list, pkey, next);
     }
 
     ret = pkt_read_byte(&msg->pkt, &msg->m.store_value_req.n_valsets);
@@ -1442,11 +1455,17 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     }
 
     for (i = 0; i < msg->m.store_value_req.n_valsets; i++) {
-        ret = azureus_pkt_read_db_valset(&msg->pkt, 
-                                            &msg->m.store_value_req.valset[i]);
+        ret = azureus_pkt_read_db_valset(&msg->pkt, &valset);
         if (ret != SUCCESS) {
             return ret;
         }
+
+        pvalset = azureus_db_valset_new(&valset.val_list, valset.n_vals);
+        if (!pvalset) {
+            return FAILURE;
+        }
+
+        TAILQ_INSERT_TAIL(&msg->m.store_value_req.valset_list, pvalset, next);
     }
 
     ret = azureus_rpc_udp_req_post_decode(msg);

@@ -26,8 +26,31 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <time.h>
+#include <stdlib.h>
 
 #include "tinydht.h"
+#include "crypto.h"
+
+#define MAX_KEYS        5
+
+const char * key[] = {
+    "key1",
+    "key2",
+    "key3",
+    "key4",
+    "key5",
+    (char *)0
+};
+
+const char * value[] = {
+    "value1",
+    "value2",
+    "value3",
+    "value4",
+    "value5",
+    (char *)0
+};
 
 int
 main(int argc, char *argv[])
@@ -37,6 +60,11 @@ main(int argc, char *argv[])
     int ret;
     struct tinydht_msg_req req;
     struct tinydht_msg_rsp rsp;
+    u32 index;
+
+    srandom(time());
+
+    index = random() % MAX_KEYS;
 
     /* do a PUT on TinyDHT */
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

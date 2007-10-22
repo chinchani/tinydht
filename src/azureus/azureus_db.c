@@ -50,6 +50,50 @@ azureus_db_val_delete(struct azureus_db_val *v)
     free(v);
 }
 
+struct azureus_db_valset *
+azureus_db_valset_new(struct val_list_head *head, int n_vals)
+{
+    struct azureus_db_valset *vs = NULL;
+    struct azureus_db_val *v = NULL, *pv = NULL;
+    int ret;
+
+    ASSERT(head && n_vals);
+
+    vs = (struct azureus_db_valset *) malloc(sizeof(struct azureus_db_valset));
+    if (!vs) {
+        return NULL;
+    }
+
+    bzero(vs, sizeof(struct azureus_db_valset));
+    vs->n_vals = n_vals;
+
+    TAILQ_FOREACH(v, head, next) {
+        ret = azureus_db_valset_add_val(vs, v->data, v->len);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    }
+
+    return vs;
+}
+
+void
+azureus_db_valset_delete(struct azureus_db_valset *vs)
+{
+    struct azureus_db_val *v = NULL;
+
+    ASSERT(vs);
+
+    while (vs->val_list.tqh_first != NULL) {
+        v = TAILQ_FIRST(&vs->val_list);
+        TAILQ_REMOVE(&vs->val_list, 
+                vs->val_list.tqh_first, next);
+        azureus_db_val_delete(v);
+    }
+
+    free(vs);
+}
+
 int
 azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
 {
@@ -67,6 +111,31 @@ azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
     TAILQ_INSERT_TAIL(&vs->val_list, v, next);
 
     return SUCCESS;
+}
+
+struct azureus_db_key *
+azureus_db_key_new(u8 *data, int len)
+{
+    struct azureus_db_key *k = NULL;
+
+    ASSERT(data && len);
+
+    k = (struct azureus_db_key *) malloc(sizeof(struct azureus_db_key));
+    if (!k) {
+        return NULL;
+    }
+
+    bzero(k, sizeof(struct azureus_db_key));
+    k->len = k;
+    memcpy(k->data, data, len);
+
+    return k;
+}
+
+void
+azureus_db_key_delete(struct azureus_db_key *key)
+{
+    free(key);
 }
 
 struct azureus_db_item *
@@ -92,6 +161,7 @@ void
 azureus_db_item_delete(struct azureus_db_item *item)
 {
     struct azureus_db_val *v = NULL;
+
     ASSERT(item);
 
     while (item->valset.val_list.tqh_first != NULL) {

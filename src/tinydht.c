@@ -632,6 +632,9 @@ tinydht_poll_loop(void)
 
         switch (ret) {
             case -1:        /* error */
+                if (errno == EINTR) {
+                    continue;
+                }
                 ERROR("poll() - %s\n", strerror(errno));
                 return FAILURE;
             case 0:         /* timeout */
@@ -641,7 +644,6 @@ tinydht_poll_loop(void)
                 data_avail = TRUE;
                 break;
         }
-
 
         if (!data_avail) {
             continue;
@@ -811,6 +813,7 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
     }
 
     close(sock);
+    free(msg);
 
     return SUCCESS;
 

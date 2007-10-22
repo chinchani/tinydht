@@ -33,6 +33,7 @@
 struct azureus_db_key {
     u8                      len;
     u8                      data[AZUREUS_MAX_KEY_LEN];
+    TAILQ_ENTRY(azureus_db_key) next;
 };
 
 struct azureus_db_val {
@@ -43,8 +44,8 @@ struct azureus_db_val {
 
 struct azureus_db_valset {
     u8                      n_vals;
-//    struct azureus_db_val   val[AZUREUS_MAX_VALS_PER_KEY];
     TAILQ_HEAD(val_list_head, azureus_db_val)    val_list;
+    TAILQ_ENTRY(azureus_db_valset) next;
 };
 
 struct azureus_db_item {
@@ -62,5 +63,7 @@ int azureus_db_item_set_key(struct azureus_db_item *item, u8 *key, int key_len);
 int azureus_db_item_add_val(struct azureus_db_item *item, u8 *val, int val_len);
 bool azureus_db_item_match_key(struct azureus_db_item *item, 
                                 u8 *key, int key_len);
+struct azureus_db_key * azureus_db_key_new(u8 *data, int len);
+void azureus_db_key_delete(struct azureus_db_key *key);
 
 #endif /* __AZUREUS_DB_H__ */

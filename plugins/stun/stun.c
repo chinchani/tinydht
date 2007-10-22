@@ -48,7 +48,6 @@ static const char *stun_server_list[] = {
     "stun1.noc.ams-ix.net",
     "stun.sipgate.net",
     "stun.voip.eutelia.it",
-    "stun.fwd.org"
 };
 
 static const size_t n_stun_servers = sizeof(stun_server_list)/sizeof(char *);
@@ -113,7 +112,7 @@ stun_send_and_receive(int sock, struct sockaddr_in *dst,
         errno = 0;
         fromlen = sizeof(from);
 
-recv:
+drain:
         ret = recvfrom(sock, buf, sizeof(buf), MSG_DONTWAIT, 
                 (struct sockaddr *)&from, &fromlen);
 
@@ -133,14 +132,15 @@ recv:
                 ERROR("expected reply from %s:%hu, instead got from %s:%hu\n",
                         inet_ntoa(dst->sin_addr), ntohs(dst->sin_port),
                         inet_ntoa(from.sin_addr), ntohs(from.sin_port));
-                continue;
+                /* drain everything before sending a new request */
+                goto drain;
             }
 
             if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
                         ((struct stun_msg_hdr *)buf)->trans_id, 16)) {
                 DEBUG("invalid transaction id, ignoring reply\n");
                 /* drain everything before sending a new request */
-                goto recv;
+                goto drain;
             }
 
             *outlen = ret;

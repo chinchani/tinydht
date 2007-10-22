@@ -180,10 +180,10 @@ struct azureus_rpc_store_value_req {
     u32                         rnd_id;
     u8                          n_keys;
     /* FIXME: make this a TAILQ? 17M!! */ 
-    struct azureus_db_key       key[AZUREUS_MAX_KEYS_PER_PKT];
+//    struct azureus_db_key       key[AZUREUS_MAX_KEYS_PER_PKT];
     TAILQ_HEAD(store_value_req_key_list_head, azureus_db_key) key_list;
     u8                          n_valsets;
-    struct azureus_db_valset    valset[AZUREUS_MAX_KEYS_PER_PKT];
+//   struct azureus_db_valset    valset[AZUREUS_MAX_KEYS_PER_PKT];
     TAILQ_HEAD(store_value_req_valset_list_head, azureus_db_valset) valset_list;
 };
 

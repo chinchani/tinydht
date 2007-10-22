@@ -1,9 +1,15 @@
 METASOURCES = auto
 
-bin_PROGRAMS = test
-test_SOURCES = client.c
-
+bin_PROGRAMS = get put
 noinst_HEADERS = 
 
-test_CFLAGS = -W -Wall -g -I$(top_srcdir)/src
+get_SOURCES = get.c
+get_CFLAGS = -W -Wall -g -O0 \
+	      -I$(top_srcdir)/test -I$(top_srcdir)/src \
+	      $(all_includes) 
+
+put_SOURCES = put.c
+put_CFLAGS = -W -Wall -g -O0 \
+	      -I$(top_srcdir)/test -I$(top_srcdir)/src \
+	      $(all_includes) 
 

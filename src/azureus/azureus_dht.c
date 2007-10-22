@@ -114,6 +114,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
         if (azureus_db_item_match_key(item, msg->req.key, msg->req.key_len)) {
             DEBUG("key already exists - deleting item\n");
             azureus_db_item_delete(item);
+            break;
         }
     }
 
