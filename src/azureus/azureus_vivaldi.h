@@ -30,10 +30,11 @@ enum azureus_vivaldi_type {
 };
 
 struct azureus_vivaldi_v1_pos {
-    float                       x;
-    float                       y;
-    float                       h;
-    float                       error;
+    float                       c[4];
+#define X       0
+#define Y       1
+#define Z       2
+#define E       3
 };
 
 struct azureus_vivaldi_pos {

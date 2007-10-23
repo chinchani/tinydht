@@ -57,13 +57,22 @@ struct azureus_db_item {
     TAILQ_ENTRY(azureus_db_item)        next;
 };
 
+struct azureus_db_key * azureus_db_key_new(u8 *data, int len);
+void azureus_db_key_delete(struct azureus_db_key *key);
+
+struct azureus_db_val * azureus_db_val_new(u8 *val, int val_len);
+void azureus_db_val_delete(struct azureus_db_val *v);
+struct azureus_db_valset * azureus_db_valset_new(struct val_list_head *head, 
+                                                    int n_vals);
+void azureus_db_valset_delete(struct azureus_db_valset *vs);
+int azureus_db_valset_add_val(struct azureus_db_valset *vs, 
+                                u8 *val, int val_len);
+
 struct azureus_db_item * azureus_db_item_new(struct azureus_dht *dht);
 void azureus_db_item_delete(struct azureus_db_item *item);
 int azureus_db_item_set_key(struct azureus_db_item *item, u8 *key, int key_len);
 int azureus_db_item_add_val(struct azureus_db_item *item, u8 *val, int val_len);
 bool azureus_db_item_match_key(struct azureus_db_item *item, 
                                 u8 *key, int key_len);
-struct azureus_db_key * azureus_db_key_new(u8 *data, int len);
-void azureus_db_key_delete(struct azureus_db_key *key);
 
 #endif /* __AZUREUS_DB_H__ */

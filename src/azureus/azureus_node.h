@@ -27,14 +27,11 @@
 #include "types.h"
 #include "key.h"
 #include "node.h"
+#include "azureus_vivaldi.h"
 
 enum azureus_node_status {
     AZUREUS_NODE_STATUS_UNKNOWN = 0xffffffff,
     AZUREUS_NODE_STATUS_ROUTABLE = 0x00000001
-};
-
-struct azureus_vivaldi_coords {
-    float x, y, h;
 };
 
 struct azureus_node {
@@ -44,7 +41,7 @@ struct azureus_node {
     u8                                  proto_ver;
     u64                                 skew;
     u32                                 rnd_id;         /* anti-spoof */
-    struct azureus_vivaldi_coords       viv;
+    struct azureus_vivaldi_pos          viv;
     TAILQ_ENTRY(azureus_node)           next;
 };
 

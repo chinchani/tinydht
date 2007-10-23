@@ -22,8 +22,61 @@
 
 #include "azureus_vivaldi.h"
 
+static int azureus_vivaldi_v1_encode(struct pkt *pkt, 
+                                        struct azureus_vivaldi_pos *pos);
 static int azureus_vivaldi_v1_decode(struct pkt *pkt, 
                                         struct azureus_vivaldi_pos *pos);
+
+int
+azureus_vivaldi_encode(struct pkt *pkt, int type, 
+                                        struct azureus_vivaldi_pos *pos)
+{
+    int ret;
+
+    ASSERT(pkt && pos);
+
+    ret = pkt_mark(pkt, 512);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    switch (type) {
+        case POSITION_TYPE_VIVALDI_V1:
+            ret = azureus_vivaldi_v1_encode(pkt, pos);
+            if (ret != SUCCESS) {
+                return ret;
+            }
+            break;
+
+        case POSITION_TYPE_VIVALDI_V2:
+            break;
+            
+        default:
+            pkt_reset(pkt);
+            return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+static int
+azureus_vivaldi_v1_encode(struct pkt *pkt, struct azureus_vivaldi_pos *pos)
+{
+    int i;
+    int ret;
+
+    ASSERT(pkt && pos);
+    ASSERT(pos->type == POSITION_TYPE_VIVALDI_V1);
+
+    for (i = 0; i < 4; i++) {
+        ret = pkt_write_float(pkt, pos->v.v1.c[i]);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    }
+
+    return SUCCESS;
+}
 
 int
 azureus_vivaldi_decode(struct pkt *pkt, int type, 
@@ -62,24 +115,19 @@ azureus_vivaldi_decode(struct pkt *pkt, int type,
 static int
 azureus_vivaldi_v1_decode(struct pkt *pkt, struct azureus_vivaldi_pos *pos)
 {
-    float f[4];
     int i;
     int ret;
 
     ASSERT(pkt && pos);
 
+    pos->type = POSITION_TYPE_VIVALDI_V1;
+
     for (i = 0; i < 4; i++) {
-        ret = pkt_read_float(pkt, &f[i]);
+        ret = pkt_read_float(pkt, &pos->v.v1.c[i]);
         if (ret != SUCCESS) {
             return ret;
         }
     }
-
-    pos->type = POSITION_TYPE_VIVALDI_V1;
-    pos->v.v1.x = f[0];
-    pos->v.v1.y = f[1];
-    pos->v.v1.h = f[2];
-    pos->v.v1.error = f[3];
 
     return SUCCESS;
 }

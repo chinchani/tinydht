@@ -25,6 +25,31 @@
 #include "debug.h"
 #include "crypto.h"
 
+struct azureus_db_key *
+azureus_db_key_new(u8 *data, int len)
+{
+    struct azureus_db_key *k = NULL;
+
+    ASSERT(data && len);
+
+    k = (struct azureus_db_key *) malloc(sizeof(struct azureus_db_key));
+    if (!k) {
+        return NULL;
+    }
+
+    bzero(k, sizeof(struct azureus_db_key));
+    k->len = len;
+    memcpy(k->data, data, len);
+
+    return k;
+}
+
+void
+azureus_db_key_delete(struct azureus_db_key *key)
+{
+    free(key);
+}
+
 struct azureus_db_val *
 azureus_db_val_new(u8 *val, int val_len)
 {
@@ -54,7 +79,7 @@ struct azureus_db_valset *
 azureus_db_valset_new(struct val_list_head *head, int n_vals)
 {
     struct azureus_db_valset *vs = NULL;
-    struct azureus_db_val *v = NULL, *pv = NULL;
+    struct azureus_db_val *v = NULL;
     int ret;
 
     ASSERT(head && n_vals);
@@ -70,11 +95,16 @@ azureus_db_valset_new(struct val_list_head *head, int n_vals)
     TAILQ_FOREACH(v, head, next) {
         ret = azureus_db_valset_add_val(vs, v->data, v->len);
         if (ret != SUCCESS) {
-            return ret;
+            goto err;
         }
     }
 
     return vs;
+
+err:
+    azureus_db_valset_delete(vs);
+
+    return NULL;
 }
 
 void
@@ -111,31 +141,6 @@ azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
     TAILQ_INSERT_TAIL(&vs->val_list, v, next);
 
     return SUCCESS;
-}
-
-struct azureus_db_key *
-azureus_db_key_new(u8 *data, int len)
-{
-    struct azureus_db_key *k = NULL;
-
-    ASSERT(data && len);
-
-    k = (struct azureus_db_key *) malloc(sizeof(struct azureus_db_key));
-    if (!k) {
-        return NULL;
-    }
-
-    bzero(k, sizeof(struct azureus_db_key));
-    k->len = k;
-    memcpy(k->data, data, len);
-
-    return k;
-}
-
-void
-azureus_db_key_delete(struct azureus_db_key *key)
-{
-    free(key);
 }
 
 struct azureus_db_item *
