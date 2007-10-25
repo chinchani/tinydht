@@ -27,8 +27,8 @@
 
 #define PROCESS_CRASH(x)                                        \
     do {                                                        \
-        char *______p = NULL;                                   \
-        *______p = 0;                                           \
+        char *__p = NULL;                                       \
+        *__p = 0;                                               \
     } while (0)
 
 #define ASSERT(x)                                               \

@@ -219,7 +219,7 @@ struct azureus_rpc_msg {
         struct azureus_rpc_msg                  *req;
         struct azureus_rpc_msg                  *rsp;
     } r;
-    u32                                         n_viv_pos;
+    u8                                          n_viv_pos;
     struct azureus_vivaldi_pos                  viv_pos[MAX_RPC_VIVALDI_POS];
 };
 

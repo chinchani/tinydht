@@ -46,6 +46,8 @@ struct azureus_vivaldi_pos {
 
 int azureus_vivaldi_decode(struct pkt *pkt, int type, 
                             struct azureus_vivaldi_pos *pos);
+int azureus_vivaldi_encode(struct pkt *pkt, int type, 
+                            struct azureus_vivaldi_pos *pos);
 
 #endif /* __AZUREUS_VIVALDI_H__ */
 

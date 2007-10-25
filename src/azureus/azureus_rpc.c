@@ -1547,14 +1547,70 @@ azureus_rpc_store_value_rsp_decode(struct azureus_rpc_msg *msg)
 int
 azureus_rpc_vivaldi_encode(struct azureus_rpc_msg *msg)
 {
+    struct azureus_dht *ad = NULL;
+    int i;
+    bool v1_found = FALSE;
+    u8 size;
     int ret = SUCCESS;
 
     ASSERT(msg);
 
-    if (ret != SUCCESS) {
-        return ret;
+    ad = azureus_dht_get_ref(msg->pkt.dht);
+
+    if (ad->proto_ver >= PROTOCOL_VERSION_GENERIC_NETPOS) {
+
+        ret = pkt_write_byte(&msg->pkt, msg->n_viv_pos);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+
+        for (i = 0; i < msg->n_viv_pos; i++) {
+
+            if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
+                v1_found = TRUE;
+            }
+
+            ret = pkt_write_byte(&msg->pkt, msg->viv_pos[i].type);
+            if (ret != SUCCESS) {
+                return ret;
+            }
+
+            size = 16;
+            ret = pkt_write_byte(&msg->pkt, size);
+            if (ret != SUCCESS) {
+                return ret;
+            }
+
+            ret = azureus_vivaldi_encode(&msg->pkt, msg->viv_pos[i].type, 
+                                            &msg->viv_pos[msg->n_viv_pos]);
+            if (ret != SUCCESS) {
+                return ret;
+            }
+        }
+
+        if (!v1_found) {
+            ERROR("Vivaldi V1 missing\n");
+            return FAILURE;
+        }
+
+    } else {
+
+        for (i = 0; i < msg->n_viv_pos; i++) {
+            if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
+                ret = azureus_vivaldi_encode(&msg->pkt, msg->viv_pos[i].type, 
+                                                &msg->viv_pos[msg->n_viv_pos]);
+                if (ret != SUCCESS) {
+                    return ret;
+                }
+
+                return;
+            }
+        }
+
+        ERROR("Vivaldi V1 missing\n");
+        return FAILURE;
     }
-    
+
     return SUCCESS;
 }
 
@@ -1572,8 +1628,6 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
     ASSERT(msg);
 
     if (msg->u.udp_req.proto_ver >= PROTOCOL_VERSION_GENERIC_NETPOS) {
-
-        skipped = 0;
 
         ret = pkt_read_byte(&msg->pkt, &n_pos);
         if (ret != SUCCESS) {
@@ -1600,15 +1654,29 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
                         return ret;
                     }
                 }
+
+                continue;
             }
 
             msg->n_viv_pos++;
-
-            if (type == POSITION_TYPE_VIVALDI_V1) {
-                v1_found = TRUE;
-            }
         }
+
     } else {
+        ret = azureus_vivaldi_decode(&msg->pkt, type, 
+                                            &msg->viv_pos[msg->n_viv_pos]);
+    }
+
+    v1_found = FALSE;
+
+    for (i = 0; i < msg->n_viv_pos; i++) {
+        if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
+            v1_found = TRUE;
+        }
+    }
+
+    if (!v1_found) {
+        ERROR("Vivaldi V1 missing\n");
+        return FAILURE;
     }
 
     return SUCCESS;
