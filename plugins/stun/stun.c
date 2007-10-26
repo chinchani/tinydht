@@ -127,8 +127,7 @@ drain:
             ERROR("empty response\n");
             break;
         } else {
-            if (memcmp(&dst->sin_addr, &from.sin_addr, 
-                        sizeof(struct in_addr))) {
+            if (memcmp(dst, &from, sizeof(struct sockaddr_in)) != 0) {
                 ERROR("expected reply from %s:%hu, instead got from %s:%hu\n",
                         inet_ntoa(dst->sin_addr), ntohs(dst->sin_port),
                         inet_ntoa(from.sin_addr), ntohs(from.sin_port));
@@ -137,7 +136,7 @@ drain:
             }
 
             if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
-                        ((struct stun_msg_hdr *)buf)->trans_id, 16)) {
+                        ((struct stun_msg_hdr *)buf)->trans_id, 16) != 0) {
                 DEBUG("invalid transaction id, ignoring reply\n");
                 /* drain everything before sending a new request */
                 goto drain;
@@ -469,8 +468,8 @@ stun_get_nat_info(struct stun_nat_info *info)
         memcpy(&info->external, &msg1.map_addr, sizeof(struct sockaddr_in));
 
         /* internal and external address are same! */
-        if (!memcmp(&info->internal, &msg1.map_addr, 
-                        sizeof(struct sockaddr_in))) {
+        if (memcmp(&info->internal, &msg1.map_addr, 
+                        sizeof(struct sockaddr_in)) == 0) {
             bzero(&msg2, sizeof(msg2));
 
             ret = stun_test_two(sock, (struct sockaddr_in *)&info->internal, 
@@ -507,7 +506,7 @@ stun_get_nat_info(struct stun_nat_info *info)
         }
 
         if (memcmp(&msg1.map_addr, &msg2.map_addr, 
-                            sizeof(struct sockaddr_in))) {
+                            sizeof(struct sockaddr_in)) != 0) {
             DEBUG("STUN_NAT_SYMMETRIC\n");
             info->nat_type = STUN_NAT_SYMMETRIC;
             return SUCCESS;

@@ -826,14 +826,13 @@ azureus_rpc_ping_rsp_encode(struct azureus_rpc_msg *msg)
     }
 
     ad = azureus_dht_get_ref(msg->pkt.dht);
-#if 0
+
     if (ad->proto_ver >= PROTOCOL_VERSION_VIVALDI) {
         ret = azureus_rpc_vivaldi_encode(msg);
         if (ret != SUCCESS) {
             return ret;
         }
     }
-#endif
 
     return SUCCESS;
 }
@@ -853,14 +852,12 @@ azureus_rpc_ping_rsp_decode(struct azureus_rpc_msg *msg)
 
     ad = azureus_dht_get_ref(msg->pkt.dht);
     
-#if 0
     if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_VIVALDI) {
         ret = azureus_rpc_vivaldi_decode(msg);
         if (ret != SUCCESS) {
             return ret;
         }
     }
-#endif
 
     return SUCCESS;
 }
@@ -980,14 +977,12 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
         }
     }
 
-#if 0
     if (ad->proto_ver >= PROTOCOL_VERSION_VIVALDI) {
         ret = azureus_rpc_vivaldi_encode(msg);
         if (ret != SUCCESS) {
             return ret;
         }
     }
-#endif
 
     ret = pkt_write_short(&msg->pkt, msg->m.find_node_rsp.n_nodes);
     if (ret != SUCCESS) {
@@ -1067,14 +1062,12 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
         msg->m.find_node_rsp.est_dht_size = est_dht_size;
     }
 
-#if 0
     if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_VIVALDI) {
         ret = azureus_rpc_vivaldi_decode(msg);
         if (ret != SUCCESS) {
             return ret;
         }
     }
-#endif
 
     ret = pkt_read_short(&msg->pkt, &msg->m.find_node_rsp.n_nodes);
     if (ret != SUCCESS) {
