@@ -115,7 +115,7 @@ ieee754_to_float(u32 ie)
 }
 
 bool
-is_nan(u32 ie)
+ieee754_is_nan(u32 ie)
 {
     if ((((ie & INF_PLUS) == INF_PLUS) || ((ie & INF_MINUS) == INF_MINUS)) && (ie & 0x7fffff)) {
         return TRUE;
@@ -125,10 +125,28 @@ is_nan(u32 ie)
 }
 
 bool
-is_inf(u32 ie)
+ieee754_is_inf(u32 ie)
 {
     if ((ie == INF_PLUS) || (ie == INF_MINUS))
         return TRUE;
     
     return FALSE;
+}
+
+bool 
+float_is_nan(float f)
+{
+    return ieee754_is_nan(float_to_ieee754(f));
+}
+
+bool
+float_is_inf(float f)
+{
+    return ieee754_is_inf(float_to_ieee754(f));
+}
+
+bool
+float_is_valid(float f)
+{
+    return (!float_is_nan(f) && !float_is_inf(f));
 }

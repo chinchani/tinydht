@@ -21,6 +21,8 @@
 #ifndef __FLOAT_H__
 #define __FLOAT_H__
 
+#include <math.h>
+
 #include "types.h"
 
 #define INF_PLUS        0x7f800000
@@ -30,5 +32,12 @@
 
 u32 float_to_ieee754(float f);
 float ieee754_to_float(u32 i);
+
+bool ieee754_is_nan(u32 ie);
+bool ieee754_is_inf(u32 ie);
+
+bool float_is_nan(float f);
+bool float_is_inf(float f);
+bool float_is_valid(float f);
 
 #endif /* __FLOAT_H__ */
