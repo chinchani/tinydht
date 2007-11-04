@@ -395,10 +395,10 @@ int
 pkt_dump(struct pkt *pkt)
 {
     unsigned int width = 16;
-    int row, col;
-    int max_row, max_col;
+    unsigned int row, col;
+    unsigned int max_row, max_col;
     char ch;
-    int len;
+    unsigned int len;
 
     ASSERT(pkt && (pkt->len > 0));
 
@@ -434,8 +434,8 @@ int
 pkt_dump_data(u8 *data, size_t len)
 {
     unsigned int width = 16;
-    int row, col;
-    int max_row, max_col;
+    unsigned int row, col;
+    unsigned int max_row, max_col;
     char ch;
 
     ASSERT(data && len);

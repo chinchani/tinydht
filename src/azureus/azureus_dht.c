@@ -33,6 +33,7 @@ struct dht *
 azureus_dht_new(struct dht_net_if *nif, int port)
 {
     struct azureus_dht *ad = NULL;
+    struct sockaddr_storage ss;
     int ret;
 
     ad = (struct azureus_dht *) malloc(sizeof(struct azureus_dht));
@@ -61,7 +62,21 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
-    ad->this_node = azureus_node_new(ad->proto_ver, &ad->dht.net_if.ext_addr);
+    bzero(&ss, sizeof(ss));
+    memcpy(&ss, &ad->dht.net_if.ext_addr, sizeof(struct sockaddr_storage));
+    switch (ss.ss_family) {
+        case AF_INET:
+            ((struct sockaddr_in *)&ss)->sin_port = port;
+            break;
+        case AF_INET6:
+            ((struct sockaddr_in6 *)&ss)->sin6_port = port;
+            break;
+        default:
+            free(ad);
+            return NULL;
+    }
+
+    ad->this_node = azureus_node_new(ad->proto_ver, &ss);
     if (!ad->this_node) {
         free(ad);
         return NULL;

@@ -54,7 +54,7 @@ const char * value[] = {
 };
 
 int
-main(int argc, char *argv[])
+main()
 {
     int sock;
     struct sockaddr_in addr4;
@@ -94,7 +94,7 @@ main(int argc, char *argv[])
 
     bzero(&req, sizeof(req));
     req.action = TINYDHT_ACTION_GET;
-    strncpy(req.key, key[index], MAX_KEY_LEN);
+    strncpy((char *)req.key, (char *)key[index], MAX_KEY_LEN);
     req.key_len = htonl(strlen(key[index]));
 
     DEBUG("GET send\n");

@@ -138,10 +138,10 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
 
     if (proto_ver >= PROTOCOL_VERSION_RESTRICT_ID_PORTS) {
         len = snprintf(buf, sizeof(buf)-1, "%s:%hu",
-                            addr, port % 1999);
+                            addr, ntohs(port) % 1999);
     } else {
         len = snprintf(buf, sizeof(buf)-1, "%s:%hu",
-                            addr, port);
+                            addr, ntohs(port));
     }
 
     DEBUG("%s\n", buf);

@@ -24,14 +24,13 @@
 #include "float.h"
 #include "crypto.h"
 
-static const float initial_err = 10.0;
-static float error = 10.0; // initial_err
-static const float cc = 0.25;
-static const float ce = 0.5;
+static const float initial_err = 10.0f;
+static const float cc = 0.25f;
+static const float ce = 0.5f;
 static int nb_updates = 0;
 static const int CONVERGE_EVERY = 5;
-static const float CONVERGE_FACTOR = 50.0;
-static const float ERROR_MIN = 0.1;
+static const float CONVERGE_FACTOR = 50.0f;
+static const float ERROR_MIN = 0.1f;
 static const float MAX_X = 30000.0f;
 static const float MAX_Y = 30000.0f;
 static const float MAX_H = 30000.0f;
@@ -40,6 +39,8 @@ static int azureus_vivaldi_v1_encode(struct pkt *pkt,
                                         struct azureus_vivaldi_pos *pos);
 static int azureus_vivaldi_v1_decode(struct pkt *pkt, 
                                         struct azureus_vivaldi_pos *pos);
+
+static float azureus_vivaldi_v1_measure(struct azureus_vivaldi_pos *pos);
 
 int
 azureus_vivaldi_encode(struct pkt *pkt, int type, 
@@ -159,8 +160,8 @@ azureus_vivaldi_v1_decode(struct pkt *pkt, struct azureus_vivaldi_pos *pos)
 }
 
 int
-azureus_vivaldi_v1_pos_new(struct azureus_vivaldi_pos *pos, u8 type, 
-                            float x, float y, float h, float err)
+azureus_vivaldi_pos_new(struct azureus_vivaldi_pos *pos, u8 type, 
+                            float x, float y, float h)
 {
     bzero(pos, sizeof(struct azureus_vivaldi_pos));
     if (type != POSITION_TYPE_VIVALDI_V1) {
@@ -170,7 +171,7 @@ azureus_vivaldi_v1_pos_new(struct azureus_vivaldi_pos *pos, u8 type,
     pos->v.v1.x = x;
     pos->v.v1.y = y;
     pos->v.v1.h = h;
-    pos->v.v1.err = err;
+    pos->v.v1.err = initial_err;
 
     return SUCCESS;
 }
@@ -211,9 +212,10 @@ azureus_vivaldi_v1_add(struct azureus_vivaldi_pos *p1,
 {
     ASSERT(p1 && p2 && res);
 
-    res->v.v1.x = p1->v.v1.x - p2->v.v1.x;
-    res->v.v1.y = p1->v.v1.y - p2->v.v1.y;
-    res->v.v1.h = fabs(p1->v.v1.h + p2->v.v1.h);
+    azureus_vivaldi_pos_new(res, POSITION_TYPE_VIVALDI_V1, 
+                            (p1->v.v1.x + p2->v.v1.x), 
+                            (p1->v.v1.y + p2->v.v1.y), 
+                            fabs(p1->v.v1.h + p2->v.v1.h));
 
     return SUCCESS;
 }
@@ -225,10 +227,10 @@ azureus_vivaldi_v1_sub(struct azureus_vivaldi_pos *p1,
 {
     ASSERT(p1 && p2 && res);
 
-    res->type = POSITION_TYPE_VIVALDI_V1;
-    res->v.v1.x = p1->v.v1.x - p2->v.v1.x;
-    res->v.v1.y = p1->v.v1.y - p2->v.v1.y;
-    res->v.v1.h = fabs(p1->v.v1.h - p2->v.v1.h);
+    azureus_vivaldi_pos_new(res, POSITION_TYPE_VIVALDI_V1, 
+                            (p1->v.v1.x - p2->v.v1.x), 
+                            (p1->v.v1.y - p2->v.v1.y), 
+                            fabs(p1->v.v1.h + p2->v.v1.h));
 
     return SUCCESS;
 }
@@ -244,45 +246,6 @@ azureus_vivaldi_v1_scale(struct azureus_vivaldi_pos *pos, float scale)
     pos->v.v1.h *= scale;
 
     return SUCCESS;
-}
-
-bool
-azureus_vivaldi_v1_equals(struct azureus_vivaldi_pos *p1, 
-                            struct azureus_vivaldi_pos *p2)
-{
-    ASSERT(p1 && p2);
-
-    if (p1->type == p2->type) {
-        if ((p1->v.v1.x != p2->v.v1.x)
-                || (p1->v.v1.y != p2->v.v1.y)
-                || (p1->v.v1.h != p2->v.v1.h)) {
-            return FALSE;
-        }
-
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
-float
-azureus_vivaldi_v1_measure(struct azureus_vivaldi_pos *pos) 
-{
-    ASSERT(pos);
-
-    return (sqrt((pos->v.v1.x * pos->v.v1.x) + 
-                    (pos->v.v1.y * pos->v.v1.y)) + pos->v.v1.h);
-}
-
-float 
-azureus_vivaldi_v1_distance(struct azureus_vivaldi_pos *p1,
-                            struct azureus_vivaldi_pos *p2)
-{
-    struct azureus_vivaldi_pos sub;
-
-    azureus_vivaldi_v1_sub(p1, p2, &sub);
-
-    return azureus_vivaldi_v1_measure(&sub);
 }
 
 int
@@ -326,6 +289,46 @@ azureus_vivaldi_v1_unity(struct azureus_vivaldi_pos *pos,
     return SUCCESS;
 }
 
+
+bool
+azureus_vivaldi_v1_equals(struct azureus_vivaldi_pos *p1, 
+                            struct azureus_vivaldi_pos *p2)
+{
+    ASSERT(p1 && p2);
+
+    if (p1->type == p2->type) {
+        if ((p1->v.v1.x != p2->v.v1.x)
+                || (p1->v.v1.y != p2->v.v1.y)
+                || (p1->v.v1.h != p2->v.v1.h)) {
+            return FALSE;
+        }
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static float
+azureus_vivaldi_v1_measure(struct azureus_vivaldi_pos *pos) 
+{
+    ASSERT(pos);
+
+    return (sqrt((pos->v.v1.x * pos->v.v1.x) + 
+                    (pos->v.v1.y * pos->v.v1.y)) + pos->v.v1.h);
+}
+
+float 
+azureus_vivaldi_v1_distance(struct azureus_vivaldi_pos *p1,
+                            struct azureus_vivaldi_pos *p2)
+{
+    struct azureus_vivaldi_pos sub;
+
+    azureus_vivaldi_v1_sub(p1, p2, &sub);
+
+    return azureus_vivaldi_v1_measure(&sub);
+}
+
 float
 azureus_vivaldi_v1_estimate_rtt(struct azureus_vivaldi_pos *p1, 
                                 struct azureus_vivaldi_pos *p2)
@@ -347,6 +350,7 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
     struct azureus_vivaldi_pos rnd_err, new_pos;
     float f_x, f_y;
     int ret;
+    struct azureus_vivaldi_pos res_1, res_2, conv;
 
     if (!float_is_valid(rtt) || !float_is_valid(ej) || 
             !azureus_vivaldi_v1_is_valid(pos) ||
@@ -385,6 +389,11 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
     }
 
     /* FIXME: some complex construction */
+    azureus_vivaldi_v1_add(cj, &rnd_err, &res_1);
+    azureus_vivaldi_v1_sub(pos, &res_1, &res_2);
+    azureus_vivaldi_v1_unity(&res_2, &res_1);
+    azureus_vivaldi_v1_scale(&res_1, scale);
+    azureus_vivaldi_v1_add(pos, &res_1, &new_pos);
 
     if (float_is_valid(new_err) && azureus_vivaldi_v1_is_valid(&new_pos)) {
         *pos = new_pos;
@@ -399,8 +408,10 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
     }
 
     if (nb_updates > CONVERGE_EVERY) {
+        DEBUG("simplify this recursion\n");
         nb_updates = 0;
-        /* FIXME: simplify */
+        azureus_vivaldi_pos_new(&conv, POSITION_TYPE_VIVALDI_V1, 0, 0, 0);
+        azureus_vivaldi_v1_update(pos, 10, &conv, CONVERGE_FACTOR);
     }
 
     return SUCCESS;

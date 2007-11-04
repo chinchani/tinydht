@@ -48,5 +48,7 @@ int key_cmp(struct key *k1, struct key *k2);
 int key_nth_bit(struct key *k, int n);
 int key_get_size_from_type(enum key_type type);
 
+void key_dump(struct key *k);
+
 #endif /* __KEY_H__ */
 

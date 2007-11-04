@@ -64,6 +64,9 @@ static int azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg);
 static int azureus_rpc_store_value_rsp_encode(struct azureus_rpc_msg *msg);
 static int azureus_rpc_store_value_rsp_decode(struct azureus_rpc_msg *msg);
 
+static int azureus_rpc_vivaldi_encode(struct azureus_rpc_msg *msg);
+static int azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg);
+
 struct azureus_rpc_msg *
 azureus_rpc_msg_new(struct dht *dht, 
                     struct sockaddr_storage *from,
@@ -1596,7 +1599,7 @@ azureus_rpc_vivaldi_encode(struct azureus_rpc_msg *msg)
                     return ret;
                 }
 
-                return;
+                return SUCCESS;
             }
         }
 
@@ -1615,7 +1618,6 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
     u8 type, size;
     int i, j;
     bool v1_found = FALSE;
-    int skipped;
     u8 _c;
 
     ASSERT(msg);
