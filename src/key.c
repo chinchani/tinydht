@@ -64,6 +64,8 @@ key_new(struct key *k, enum key_type type, void *data, int data_len)
             return FAILURE;
     }
 
+    key_dump(k);
+
     return SUCCESS;
 }
 
@@ -162,4 +164,18 @@ key_get_size_from_type(enum key_type type)
     }
 
     return size;
+}
+
+void
+key_dump(struct key *k)
+{
+    int i;
+
+    ASSERT(k);
+
+    printf("%p: ", k);
+    for (i = 0; i < k->len; i++) {
+        printf("%02x", k->data[i]);
+    }
+    printf("\n");
 }

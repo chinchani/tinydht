@@ -29,6 +29,7 @@
 
 #include "crypto.h"
 #include "types.h"
+#include "float.h"
 
 #if 0
 static const char *crypto_seed_file = ".tinydht-crypto-rng-seed";
@@ -137,6 +138,26 @@ crypto_get_rnd_long(u64 *l)
     if (ret != SUCCESS) {
         return ret;
     }
+
+    return SUCCESS;
+}
+
+int
+crypto_get_rnd_float(float *f)
+{
+    u32 i;
+    int ret;
+
+    if (!f) {
+        return FAILURE;
+    }
+
+    ret = crypto_get_rnd_int(&i);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    *f = ieee754_to_float(i);
 
     return SUCCESS;
 }

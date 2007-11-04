@@ -30,7 +30,7 @@ enum azureus_vivaldi_type {
 };
 
 struct azureus_vivaldi_v1_pos {
-    float                       x, y, h, err;
+    float       x, y, h, err;
 #define X       0
 #define Y       1
 #define H       2

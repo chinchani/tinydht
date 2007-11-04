@@ -137,7 +137,7 @@ drain:
 
             if (memcmp(((struct stun_msg_hdr *)in)->trans_id, 
                         ((struct stun_msg_hdr *)buf)->trans_id, 16) != 0) {
-                DEBUG("invalid transaction id, ignoring reply\n");
+                ERROR("invalid transaction id, ignoring reply\n");
                 /* drain everything before sending a new request */
                 goto drain;
             }

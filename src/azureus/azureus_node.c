@@ -120,6 +120,7 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
             return FAILURE;
     }
 
+    /* can we resolve this IP address? */
     ret = getnameinfo((struct sockaddr *)ss, salen,
                 namebuf, sizeof(namebuf), NULL, 0, 0);
 
@@ -136,16 +137,19 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
     bzero(digest, sizeof(digest));
 
     if (proto_ver >= PROTOCOL_VERSION_RESTRICT_ID_PORTS) {
-        len = snprintf(buf, sizeof(buf)-1, "%s/%s:%hu",
-                (name ? name : ""), addr, port % 1999);
-        crypto_get_sha1_digest(buf, len, digest);
+        len = snprintf(buf, sizeof(buf)-1, "%s:%hu",
+                            addr, port % 1999);
     } else {
-        len = snprintf(buf, sizeof(buf)-1, "%s/%s:%hu",
-                (name ? name : ""), addr, port);
-
-        crypto_get_sha1_digest(buf, len, digest);
+        len = snprintf(buf, sizeof(buf)-1, "%s:%hu",
+                            addr, port);
     }
 
+    DEBUG("%s\n", buf);
+
+    ret = crypto_get_sha1_digest(buf, len, digest);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
     ret = key_new(k, KEY_TYPE_SHA1, digest, 20);
     
