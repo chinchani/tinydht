@@ -40,7 +40,6 @@ int crypto_get_rnd_bytes(void *buf, int num);
 int crypto_get_rnd_short(u16 *s);
 int crypto_get_rnd_int(u32 *s);
 int crypto_get_rnd_long(u64 *l);
-int crypto_get_rnd_float(float *f);
 int crypto_get_sha1_digest(void *data, int len, void *digest);
 
 #endif /* __CRYPTO_H__ */

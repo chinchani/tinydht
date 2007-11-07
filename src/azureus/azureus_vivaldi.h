@@ -44,10 +44,19 @@ struct azureus_vivaldi_pos {
     } v;
 };
 
+int azureus_vivaldi_pos_new(struct azureus_vivaldi_pos *pos, u8 type, 
+                            float x, float y, float h);
+int azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt, 
+                            struct azureus_vivaldi_pos *cj, float ej);
+float azureus_vivaldi_v1_estimate_rtt(struct azureus_vivaldi_pos *p1, 
+                                struct azureus_vivaldi_pos *p2);
+
 int azureus_vivaldi_decode(struct pkt *pkt, int type, 
                             struct azureus_vivaldi_pos *pos);
 int azureus_vivaldi_encode(struct pkt *pkt, int type, 
                             struct azureus_vivaldi_pos *pos);
+
+void azureus_vivaldi_pos_dump(struct azureus_vivaldi_pos *pos);
 
 #endif /* __AZUREUS_VIVALDI_H__ */
 

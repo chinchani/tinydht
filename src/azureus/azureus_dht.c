@@ -82,6 +82,9 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
+    /* initialize the network position of this node */
+    azureus_vivaldi_pos_new(&ad->this_node->netpos, POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
+
     TAILQ_INIT(&ad->db_list);
 
     INFO("Azureus DHT listening on port %hu\n", ntohs(ad->dht.port));

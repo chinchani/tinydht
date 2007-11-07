@@ -189,7 +189,7 @@ azureus_vivaldi_v1_at_origin(struct azureus_vivaldi_pos *pos)
 {
     ASSERT(pos);
 
-    return ((pos->v.v1.x == 0) && (pos->v.v1.y == 0));
+    return ((pos->v.v1.x == 0.0f) && (pos->v.v1.y == 0.0f));
 }
 
 bool
@@ -253,30 +253,17 @@ azureus_vivaldi_v1_unity(struct azureus_vivaldi_pos *pos,
                             struct azureus_vivaldi_pos *res)
 {
     float measure;
-    int ret;
 
     ASSERT(pos && res);
 
     bzero(res, sizeof(struct azureus_vivaldi_pos));
-    res->type = POSITION_TYPE_VIVALDI_V1;
+    *res = *pos;
 
     measure = azureus_vivaldi_v1_measure(pos);
-    DEBUG("measure: %f\n", measure);
-    if (measure == 0) {
-        ret = crypto_get_rnd_float(&res->v.v1.x);
-        if (ret != SUCCESS) {
-            return ret;
-        }
-
-        ret = crypto_get_rnd_float(&res->v.v1.y);
-        if (ret != SUCCESS) {
-            return ret;
-        }
-
-        ret = crypto_get_rnd_float(&res->v.v1.h);
-        if (ret != SUCCESS) {
-            return ret;
-        }
+    if (measure == 0.0f) {
+        res->v.v1.x = 1.0*random()/RAND_MAX;
+        res->v.v1.y = 1.0*random()/RAND_MAX;
+        res->v.v1.h = 1.0*random()/RAND_MAX;
 
         measure = azureus_vivaldi_v1_measure(res);
         azureus_vivaldi_v1_scale(res, 1.0/measure);
@@ -288,7 +275,6 @@ azureus_vivaldi_v1_unity(struct azureus_vivaldi_pos *pos,
 
     return SUCCESS;
 }
-
 
 bool
 azureus_vivaldi_v1_equals(struct azureus_vivaldi_pos *p1, 
@@ -347,10 +333,12 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
                             struct azureus_vivaldi_pos *cj, float ej)
 {
     float w, re, es, new_err, delta, scale;
-    struct azureus_vivaldi_pos rnd_err, new_pos;
+    struct azureus_vivaldi_pos rnd_err, new_pos, zero;
     float f_x, f_y;
     int ret;
-    struct azureus_vivaldi_pos res_1, res_2, conv;
+    struct azureus_vivaldi_pos res_1, res_2;
+
+retry:
 
     if (!float_is_valid(rtt) || !float_is_valid(ej) || 
             !azureus_vivaldi_v1_is_valid(pos) ||
@@ -359,12 +347,12 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
         return FAILURE;
     }
 
-    if (rtt <= 0 || rtt > 5*60*1000) {
+    if (rtt <= 0.0f || rtt > 5.0*60*1000) {
         ERROR("Invalid RTT\n");
         return FAILURE;
     }
 
-    if (pos->v.v1.err + ej == 0) {
+    if ((pos->v.v1.err + ej) == 0.0f) {
         ERROR("Invalid ERROR\n");
         return FAILURE;
     }
@@ -372,15 +360,12 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
     w = pos->v.v1.err/(ej + pos->v.v1.err);
     re = rtt - azureus_vivaldi_v1_distance(pos, cj);
     es = fabs(re)/rtt;
-    new_err = es * ce * w + pos->v.v1.err * (1 - ce * w);
+    new_err = es * ce * w + pos->v.v1.err * (1.0f - ce * w);
 
     delta = cc * w;
     scale = delta * re;
-
-    if (crypto_get_rnd_float(&f_x) != SUCCESS
-            || crypto_get_rnd_float(&f_y) != SUCCESS) {
-        return FAILURE;
-    }
+    f_x = 1.0*random()/RAND_MAX;
+    f_y = 1.0*random()/RAND_MAX;
 
     ret = azureus_vivaldi_pos_new(&rnd_err, POSITION_TYPE_VIVALDI_V1, 
                                     f_x/10, f_y/10, 0.0f);
@@ -399,7 +384,7 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
         *pos = new_pos;
         pos->v.v1.err = new_err > ERROR_MIN ? new_err : ERROR_MIN;
     } else {
-        azureus_vivaldi_pos_new(pos, POSITION_TYPE_VIVALDI_V1, 0, 0, 0);
+        azureus_vivaldi_pos_new(pos, POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
         pos->v.v1.err = initial_err;
     }
 
@@ -408,12 +393,25 @@ azureus_vivaldi_v1_update(struct azureus_vivaldi_pos *pos, float rtt,
     }
 
     if (nb_updates > CONVERGE_EVERY) {
-        DEBUG("simplify this recursion\n");
         nb_updates = 0;
-        azureus_vivaldi_pos_new(&conv, POSITION_TYPE_VIVALDI_V1, 0, 0, 0);
-        azureus_vivaldi_v1_update(pos, 10, &conv, CONVERGE_FACTOR);
+
+        rtt = 10.0f;
+        azureus_vivaldi_pos_new(&zero, POSITION_TYPE_VIVALDI_V1, 
+                                    0.0f, 0.0f, 0.0f);
+        ej = CONVERGE_FACTOR;
+        goto retry;
     }
 
     return SUCCESS;
 }
 
+void
+azureus_vivaldi_pos_dump(struct azureus_vivaldi_pos *pos)
+{
+    ASSERT(pos);
+
+    DEBUG("%p type:%d x:%f y:%f h:%f err:%f\n", pos, pos->type, 
+            pos->v.v1.x, pos->v.v1.y, pos->v.v1.h, pos->v.v1.err);
+
+    return;
+}

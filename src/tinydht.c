@@ -56,6 +56,8 @@ extern int errno;
 #include "queue.h"
 #include "float.h"
 
+#include "azureus_vivaldi.h"
+
 extern int h_errno;
 
 /*--------------- Global Variables -----------------*/
@@ -164,6 +166,9 @@ tinydht_init(void)
     if (ret != SUCCESS) {
         return ret;
     }
+
+    /* initialize the prng */
+    srandom(dht_get_current_time());
 
     /* initialize the crypto engine */
     ret = crypto_init();

@@ -41,7 +41,7 @@ struct azureus_node {
     u8                                  proto_ver;
     u64                                 skew;
     u32                                 rnd_id;         /* anti-spoof */
-    struct azureus_vivaldi_pos          viv;
+    struct azureus_vivaldi_pos          netpos;
     TAILQ_ENTRY(azureus_node)           next;
 };
 
