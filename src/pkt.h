@@ -29,8 +29,15 @@
 
 #define MAX_PKT_LEN     1400    /* MTU size */
 
+enum pkt_dir {
+    PKT_DIR_UNKNOWN = 0,
+    PKT_DIR_TX,
+    PKT_DIR_RX
+};
+
 struct pkt {
-    struct sockaddr_storage     from;
+    enum pkt_dir                dir;
+    struct sockaddr_storage     ss;
     u_int8_t                    data[MAX_PKT_LEN];
     unsigned int                len;    /* actual pkt len */
     unsigned int                cursor; /* to track write/read */
@@ -41,7 +48,7 @@ struct pkt {
 };
 
 int pkt_new(struct pkt *pkt, struct dht *dht, 
-                struct sockaddr_storage *from, size_t fromlen, 
+                struct sockaddr_storage *ss, size_t sslen, 
                 u8 *data, unsigned int len);
 int pkt_delete(struct pkt *pkt);
 int pkt_sanity(struct pkt *pkt);

@@ -46,6 +46,8 @@ azureus_dht_get_ref(struct dht *dht)
     return container_of(dht, struct azureus_dht, dht);
 }
 
+#define DHT_BOOTSTRAP_HOST      "ae2.aelitis.com"
+
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
 int azureus_dht_put(struct dht *dht, struct tinydht_msg *msg);

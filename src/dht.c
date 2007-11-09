@@ -112,25 +112,6 @@ dht_new(struct dht *dht, unsigned int type,
             goto err;
     }
 
-#if 0
-    sa_family = ((struct sockaddr *)&net_if->ext_addr)->sa_family;
-
-    switch (sa_family) {
-        case AF_INET:
-            ((struct sockaddr_in *)&net_if->ext_addr)->sin_port = port;
-            ((struct sockaddr_in *)&net_if->local_addr)->sin_port = port;
-            break;
-
-        case AF_INET6:
-            ((struct sockaddr_in6 *)&net_if->ext_addr)->sin6_port = port;
-            ((struct sockaddr_in6 *)&net_if->local_addr)->sin6_port = port;
-            break;
-
-        default:
-            goto err;
-    }
-#endif
-
     for (i = 0; (i < MAX_DHT_TYPE) && dht_table[i]; i++) {
         if (dht_table[i]->type == type) {
             dht->get = dht_table[i]->get;

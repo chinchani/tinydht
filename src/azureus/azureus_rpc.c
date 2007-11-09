@@ -69,14 +69,15 @@ static int azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg);
 
 struct azureus_rpc_msg *
 azureus_rpc_msg_new(struct dht *dht, 
-                    struct sockaddr_storage *from,
-                    size_t fromlen,
-                    u8 *data, int len)
+                    struct sockaddr_storage *ss,
+                    size_t sslen,
+                    u8 *data, 
+                    int len)
 {
     struct azureus_rpc_msg *msg = NULL;
     int ret;
 
-    ASSERT(dht && data && (len >= 0));
+    ASSERT(dht && (len >= 0));
 
     msg = (struct azureus_rpc_msg *) malloc(sizeof(struct azureus_rpc_msg));
     if (!msg) {
@@ -84,7 +85,7 @@ azureus_rpc_msg_new(struct dht *dht,
     }
 
     bzero(msg, sizeof(struct azureus_rpc_msg));
-    ret = pkt_new(&msg->pkt, dht, from, fromlen, data, len);
+    ret = pkt_new(&msg->pkt, dht, ss, sslen, data, len);
     if (ret != SUCCESS) {
         goto err;
     }
@@ -100,6 +101,51 @@ void
 azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 {
     free(msg);
+}
+
+int
+azureus_encode_rpc(struct azureus_rpc_msg *msg)
+{
+    int ret;
+
+    switch (msg->action) {
+        case ACT_REQUEST_PING:
+            ret = azureus_rpc_ping_req_encode(msg);
+            break;
+
+        case ACT_REPLY_PING:
+            ret = azureus_rpc_ping_rsp_encode(msg);
+            break;
+
+        case ACT_REQUEST_FIND_NODE:
+            ret = azureus_rpc_find_node_req_encode(msg);
+            break;
+
+        case ACT_REPLY_FIND_NODE:
+            ret = azureus_rpc_find_node_rsp_encode(msg);
+            break;
+
+        case ACT_REQUEST_FIND_VALUE:
+            ret = azureus_rpc_find_value_req_encode(msg);
+            break;
+
+        case ACT_REPLY_FIND_VALUE:
+            ret = azureus_rpc_find_value_rsp_encode(msg);
+            break;
+
+        case ACT_REQUEST_STORE:
+            ret = azureus_rpc_store_value_req_encode(msg);
+            break;
+
+        case ACT_REPLY_STORE:
+            ret = azureus_rpc_store_value_rsp_encode(msg);
+            break;
+
+        default:
+            return FAILURE;
+    }
+
+    return SUCCESS;
 }
 
 int 
@@ -166,7 +212,7 @@ azureus_decode_rpc(struct dht *dht,
             break;
 
         default:
-            break;
+            return FAILURE;
     }
 
     return SUCCESS;

@@ -40,7 +40,7 @@ static const char *stun_server_list[] = {
     "stunserver.org",
     "stun.fwdnet.net",
     "stun01.sipphone.com",
-    "stun.voipbuster.com",
+//    "stun.voipbuster.com",
     "stun.voxgratia.org",
     "stun.xten.com",
     "stun.ekiga.net",

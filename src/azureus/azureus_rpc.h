@@ -223,13 +223,20 @@ struct azureus_rpc_msg {
     struct azureus_vivaldi_pos                  viv_pos[MAX_RPC_VIVALDI_POS];
 };
 
+static inline struct azureus_rpc_msg *
+azureus_rpc_msg_get_ref(struct pkt *pkt)
+{
+    return container_of(pkt, struct azureus_rpc_msg, pkt);
+}
+
 struct azureus_rpc_msg * azureus_rpc_msg_new(struct dht *dht, 
                                                 struct sockaddr_storage *from,
                                                 size_t fromlen,
                                                 u8 *data, int len);
 void azureus_rpc_msg_delete(struct azureus_rpc_msg *msg);
 
-int azureus_decode_rpc(struct dht *dht, 
-                        struct sockaddr_storage *from, size_t fromlen, u8 *data, int len);
+int azureus_encode_rpc(struct azureus_rpc_msg *msg);
+int azureus_decode_rpc(struct dht *dht, struct sockaddr_storage *from, 
+                            size_t fromlen, u8 *data, int len);
 
 #endif /* __AZUREUS_RPC_H__ */

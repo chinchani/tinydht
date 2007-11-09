@@ -21,6 +21,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <netdb.h>
+extern int h_errno;
+
+#include <errno.h>
+extern int errno;
 
 #include "azureus_dht.h"
 #include "dht_types.h"
@@ -28,12 +33,16 @@
 #include "crypto.h"
 #include "azureus_rpc.h"
 #include "azureus_db.h"
+#include "task.h"
 
 struct dht *
 azureus_dht_new(struct dht_net_if *nif, int port)
 {
     struct azureus_dht *ad = NULL;
     struct sockaddr_storage ss;
+    struct azureus_rpc_msg *msg = NULL;
+    struct hostent *he = NULL;
+    struct task *t = NULL;
     int ret;
 
     ad = (struct azureus_dht *) malloc(sizeof(struct azureus_dht));
@@ -44,7 +53,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     /* initialize parent base class */
     ret = dht_new(&ad->dht, DHT_TYPE_AZUREUS, nif, port);
     if (ret != SUCCESS) {
-        free(ad);
+        azureus_dht_delete(&ad->dht);
         return NULL;
     }
 
@@ -52,13 +61,13 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     ad->proto_ver = PROTOCOL_VERSION_MAIN;
     ret = crypto_get_rnd_int(&ad->trans_id);
     if (ret != SUCCESS) {
-        free(ad);
+        azureus_dht_delete(&ad->dht);
         return NULL;
     }
     
     ret = crypto_get_rnd_int(&ad->instance_id);
     if (ret != SUCCESS) {
-        free(ad);
+        azureus_dht_delete(&ad->dht);
         return NULL;
     }
 
@@ -72,20 +81,55 @@ azureus_dht_new(struct dht_net_if *nif, int port)
             ((struct sockaddr_in6 *)&ss)->sin6_port = port;
             break;
         default:
-            free(ad);
+            azureus_dht_delete(&ad->dht);
             return NULL;
     }
 
     ad->this_node = azureus_node_new(ad->proto_ver, &ss);
     if (!ad->this_node) {
-        free(ad);
+        azureus_dht_delete(&ad->dht);
         return NULL;
     }
 
     /* initialize the network position of this node */
-    azureus_vivaldi_pos_new(&ad->this_node->netpos, POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
+    azureus_vivaldi_pos_new(&ad->this_node->netpos, 
+                            POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
 
     TAILQ_INIT(&ad->db_list);
+
+    /* bootstrap from "ae2.aelitis.com" */
+    he = gethostbyname(DHT_BOOTSTRAP_HOST);
+    if (!he) {
+        ERROR("%s\n", hstrerror(h_errno));
+        azureus_dht_delete(&ad->dht);
+        return NULL;
+    }
+
+    bzero(&ss, sizeof(ss));
+    ss.ss_family = AF_INET;
+    memcpy(&(((struct sockaddr_in *)&ss)->sin_addr), he->h_addr, 
+                sizeof(struct in_addr));
+    ((struct sockaddr_in *)&ss)->sin_port = ad->dht.port;
+    msg = azureus_rpc_msg_new(&ad->dht, &ss, sizeof(struct sockaddr_storage), 
+                                NULL, 0);
+    if (!msg) {
+        azureus_dht_delete(&ad->dht);
+        return NULL;
+    }
+
+    msg->action = ACT_REQUEST_PING;
+    msg->pkt.dir = PKT_DIR_TX;
+
+    t = task_new(&ad->dht, &msg->pkt);
+    if (!t) {
+        azureus_rpc_msg_delete(msg);
+        azureus_dht_delete(&ad->dht);
+        return NULL;
+    }
+
+    t->state = TASK_STATE_RUNNABLE;
+
+    tinydht_add_task(t);
 
     INFO("Azureus DHT listening on port %hu\n", ntohs(ad->dht.port));
 
@@ -208,7 +252,35 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 int 
 azureus_task_schedule(struct task *task)
 {
+    struct azureus_rpc_msg *msg = NULL;
+    struct pkt *pkt = NULL;
+    int ret;
+
     ASSERT(task);
+
+    TAILQ_FOREACH(pkt, &task->pkt_list, next) {
+        switch (pkt->dir) {
+            case PKT_DIR_RX:
+                DEBUG("RX\n");
+
+            case PKT_DIR_TX:
+                DEBUG("TX\n");
+                msg = azureus_rpc_msg_get_ref(TAILQ_FIRST(&task->pkt_list));
+                ret = azureus_encode_rpc(msg);
+                if (ret != SUCCESS) {
+                    return FAILURE;
+                }
+                ret = sendto(task->dht->net_if.sock, pkt->data, pkt->len, 0, 
+                        (struct sockaddr *)&pkt->ss, sizeof(struct sockaddr_storage));
+                if (ret < 0) {
+                    ERROR("sendto() - %s\n", strerror(errno));
+                    return FAILURE;
+                }
+
+            default:
+                return FAILURE;
+        }
+    }
 
     return SUCCESS;
 }

@@ -31,14 +31,14 @@
 
 int
 pkt_new(struct pkt *pkt, struct dht *dht, 
-            struct sockaddr_storage *from, size_t fromlen, 
+            struct sockaddr_storage *ss, size_t sslen, 
             u8 *data, unsigned int len)
 {
-    ASSERT(pkt && dht && data && (len < MAX_PKT_LEN));
+    ASSERT(pkt && dht && (len < MAX_PKT_LEN));
     
     bzero(pkt, sizeof(struct pkt));
     pkt->dht = dht;
-    memcpy(&pkt->from, from, fromlen);
+    memcpy(&pkt->ss, ss, sslen);
     memcpy(pkt->data, data, len);
     pkt->len = len;
     

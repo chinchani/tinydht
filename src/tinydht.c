@@ -56,8 +56,6 @@ extern int errno;
 #include "queue.h"
 #include "float.h"
 
-#include "azureus_vivaldi.h"
-
 extern int h_errno;
 
 /*--------------- Global Variables -----------------*/
@@ -570,6 +568,13 @@ int
 tinydht_add_task(struct task *task)
 {
     TAILQ_INSERT_TAIL(&task_list, task, next);
+    return SUCCESS;
+}
+
+int
+tinydht_delete_task(struct task *task)
+{
+    TAILQ_REMOVE(&task_list, task, next);
     return SUCCESS;
 }
 
