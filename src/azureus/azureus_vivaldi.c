@@ -123,7 +123,7 @@ azureus_vivaldi_decode(struct pkt *pkt, int type,
             break;
 
         case POSITION_TYPE_VIVALDI_V2:
-            break;
+            return FAILURE;
 
         default:
             pkt_reset(pkt);

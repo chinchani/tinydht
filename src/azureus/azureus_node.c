@@ -109,7 +109,8 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
             salen = sizeof(struct sockaddr_in6);
             in6 = (struct sockaddr_in6 *)ss;
             port = in6->sin6_port;
-            pret = inet_ntop(ss->ss_family, (void *)&in6->sin6_addr, addr, sizeof(addr));
+            pret = inet_ntop(ss->ss_family, (void *)&in6->sin6_addr, 
+                                addr, sizeof(addr));
             if (!pret) {
                 return FAILURE;
             }
@@ -120,6 +121,7 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
             return FAILURE;
     }
 
+#if 0
     /* can we resolve this IP address? */
     ret = getnameinfo((struct sockaddr *)ss, salen,
                 namebuf, sizeof(namebuf), NULL, 0, 0);
@@ -133,6 +135,7 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
     } else {
         name = namebuf;
     }
+#endif
 
     bzero(digest, sizeof(digest));
 

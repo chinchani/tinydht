@@ -65,12 +65,13 @@ pkt_mark(struct pkt *pkt, unsigned int rdlim)
     }
 
     if (pkt->cursor + rdlim > pkt->len) {
-        return FAILURE;
+        pkt->mark_rdlim = pkt->len;
+    } else {
+        pkt->mark_rdlim = rdlim;
     }
 
     pkt->mark_pos = pkt->cursor;
     /* FIXME: fix rdlim logic for reads/writes */
-    pkt->mark_rdlim = rdlim;
 
     return SUCCESS;
 }

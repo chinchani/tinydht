@@ -119,6 +119,7 @@ azureus_pkt_read_inetaddr(struct pkt *pkt, struct sockaddr_storage *ss)
             if (ret != SUCCESS) {
                 return ret;
             }
+            sin4->sin_port = ntohs(sin4->sin_port);
 
             break;
 
@@ -135,6 +136,7 @@ azureus_pkt_read_inetaddr(struct pkt *pkt, struct sockaddr_storage *ss)
             if (ret != SUCCESS) {
                 return ret;
             }
+            sin6->sin6_port = ntohs(sin6->sin6_port);
 
             break;
 

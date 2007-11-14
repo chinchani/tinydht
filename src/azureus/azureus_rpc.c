@@ -363,6 +363,7 @@ msg_get_rpc_action(struct azureus_rpc_msg *msg, u32 *action)
         }
         *action = ntohl(*action);
         DEBUG("action %#x\n", *action);
+        DEBUG("pkt cursor %#x\n", msg->pkt.cursor);
     } else {            /* response */
         DEBUG("REPLY\n");
         ret = pkt_peek(&msg->pkt, 0, action, sizeof(u32));
@@ -371,6 +372,7 @@ msg_get_rpc_action(struct azureus_rpc_msg *msg, u32 *action)
         }
         *action = ntohl(*action);
         DEBUG("action %#x\n", *action);
+        DEBUG("pkt cursor %#x\n", msg->pkt.cursor);
     }
 
     return SUCCESS;
@@ -1081,12 +1083,16 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
+    DEBUG("pkt cursor %#x\n", msg->pkt.cursor);
+
     TAILQ_INIT(&msg->m.find_node_rsp.node_list);
 
     ret = azureus_rpc_udp_rsp_decode(msg);
     if (ret != SUCCESS) {
         return ret;
     }
+
+    DEBUG("pkt cursor %#x\n", msg->pkt.cursor);
 
     ad = azureus_dht_get_ref(msg->pkt.dht);
 
@@ -1097,9 +1103,9 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
         }
         /* FIXME: verify the random_id */
         msg->m.find_node_rsp.rnd_id = rnd_id;
-        
+
+        DEBUG("rnd id %#0x\n", rnd_id);
     }
-    msg->m.find_node_rsp.rnd_id = rnd_id;
 
     if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_XFER_STATUS) {
         ret = pkt_read_int(&msg->pkt, &node_status);
@@ -1119,6 +1125,8 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
         /* FIXME: do something more about this? */
         msg->m.find_node_rsp.est_dht_size = est_dht_size;
     }
+
+    DEBUG("pkt cursor %#x\n", msg->pkt.cursor);
 
     if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_VIVALDI) {
         ret = azureus_rpc_vivaldi_decode(msg);
