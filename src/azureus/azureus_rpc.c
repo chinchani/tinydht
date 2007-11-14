@@ -1685,7 +1685,9 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    if (msg->u.udp_req.proto_ver >= PROTOCOL_VERSION_GENERIC_NETPOS) {
+    if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_GENERIC_NETPOS) {
+
+        DEBUG("generic netpos - proto_ver %#x\n", msg->u.udp_rsp.proto_ver);
 
         ret = pkt_read_byte(&msg->pkt, &n_pos);
         if (ret != SUCCESS) {
@@ -1702,6 +1704,8 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
             if (ret != SUCCESS) {
                 return ret;
             }
+
+            DEBUG("vivaldi n_pos %d type %d size %d\n", n_pos, type, size);
 
             ret = azureus_vivaldi_decode(&msg->pkt, type, 
                                             &msg->viv_pos[msg->n_viv_pos]);
@@ -1720,6 +1724,7 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
         }
 
     } else {
+        DEBUG("not generic netpos\n");
         ret = azureus_vivaldi_decode(&msg->pkt, type, 
                                             &msg->viv_pos[msg->n_viv_pos]);
     }
@@ -1731,6 +1736,8 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
             v1_found = TRUE;
         }
     }
+
+    DEBUG("n_pos %d\n", msg->n_viv_pos);
 
     if (!v1_found) {
         ERROR("Vivaldi V1 missing\n");

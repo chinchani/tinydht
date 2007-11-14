@@ -58,6 +58,8 @@ extern int errno;
 
 extern int h_errno;
 
+#define SKIP_STUN
+
 /*--------------- Global Variables -----------------*/
 
 char rpc_ifname[IFNAMSIZ];
