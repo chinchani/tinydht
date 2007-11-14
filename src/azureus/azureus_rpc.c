@@ -104,7 +104,7 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 }
 
 int
-azureus_encode_rpc(struct azureus_rpc_msg *msg)
+azureus_rpc_encode(struct azureus_rpc_msg *msg)
 {
     int ret;
 
@@ -145,11 +145,13 @@ azureus_encode_rpc(struct azureus_rpc_msg *msg)
             return FAILURE;
     }
 
+    pkt_dump(&msg->pkt);
+
     return SUCCESS;
 }
 
 int 
-azureus_decode_rpc(struct dht *dht, 
+azureus_rpc_decode(struct dht *dht, 
                     struct sockaddr_storage *from, 
                     size_t fromlen,
                     u8 *data, 
@@ -192,6 +194,7 @@ azureus_decode_rpc(struct dht *dht,
             break;
 
         case ACT_REPLY_FIND_NODE:
+            DEBUG("REPLY_FIND_NODE\n");
             ret = azureus_rpc_find_node_rsp_decode(msg);
             break;
 
@@ -352,16 +355,22 @@ msg_get_rpc_action(struct azureus_rpc_msg *msg, u32 *action)
     }
 
     if (is_req) {       /* request */
+        DEBUG("REQUEST\n");
         /* skip over conn_id */
         ret = pkt_peek(&msg->pkt, sizeof(u64), action, sizeof(u32));
         if (ret != SUCCESS) {
             return ret;
         }
+        *action = ntohl(*action);
+        DEBUG("action %#x\n", *action);
     } else {            /* response */
+        DEBUG("REPLY\n");
         ret = pkt_peek(&msg->pkt, 0, action, sizeof(u32));
         if (ret != SUCCESS) {
             return ret;
         }
+        *action = ntohl(*action);
+        DEBUG("action %#x\n", *action);
     }
 
     return SUCCESS;

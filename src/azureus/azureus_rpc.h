@@ -235,8 +235,8 @@ struct azureus_rpc_msg * azureus_rpc_msg_new(struct dht *dht,
                                                 u8 *data, int len);
 void azureus_rpc_msg_delete(struct azureus_rpc_msg *msg);
 
-int azureus_encode_rpc(struct azureus_rpc_msg *msg);
-int azureus_decode_rpc(struct dht *dht, struct sockaddr_storage *from, 
+int azureus_rpc_encode(struct azureus_rpc_msg *msg);
+int azureus_rpc_decode(struct dht *dht, struct sockaddr_storage *from, 
                             size_t fromlen, u8 *data, int len);
 
 #endif /* __AZUREUS_RPC_H__ */

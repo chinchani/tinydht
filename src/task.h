@@ -27,7 +27,6 @@
 
 enum task_state {
     TASK_STATE_UNKNOWN = 0,
-    TASK_STATE_RUNNABLE,
     TASK_STATE_WAIT,
     TASK_STATE_MAX
 };

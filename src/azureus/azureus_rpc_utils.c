@@ -54,7 +54,7 @@ azureus_pkt_write_inetaddr(struct pkt *pkt, struct sockaddr_storage *ss)
                 return ret;
             }
 
-            ret = pkt_write_short(pkt, sin4->sin_port);
+            ret = pkt_write_short(pkt, htons(sin4->sin_port));
             if (ret != SUCCESS) {
                 return ret;
             }

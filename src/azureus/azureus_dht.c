@@ -18,6 +18,7 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
  ***************************************************************************/
 
+#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -97,7 +98,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
 
     TAILQ_INIT(&ad->db_list);
 
-    /* bootstrap from "ae2.aelitis.com" */
+    /* bootstrap from "ae2.aelitis.com:6881" */
     he = gethostbyname(DHT_BOOTSTRAP_HOST);
     if (!he) {
         ERROR("%s\n", hstrerror(h_errno));
@@ -109,7 +110,9 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     ss.ss_family = AF_INET;
     memcpy(&(((struct sockaddr_in *)&ss)->sin_addr), he->h_addr, 
                 sizeof(struct in_addr));
-    ((struct sockaddr_in *)&ss)->sin_port = ad->dht.port;
+    ((struct sockaddr_in *)&ss)->sin_port = htons(DHT_BOOTSTRAP_PORT);
+
+    /* do a PING */
     msg = azureus_rpc_msg_new(&ad->dht, &ss, sizeof(struct sockaddr_storage), 
                                 NULL, 0);
     if (!msg) {
@@ -127,7 +130,27 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
-    t->state = TASK_STATE_RUNNABLE;
+    tinydht_add_task(t);
+
+    /* do a FIND_NODE on myself */
+    msg = azureus_rpc_msg_new(&ad->dht, &ss, sizeof(struct sockaddr_storage), 
+                                NULL, 0);
+    if (!msg) {
+        azureus_dht_delete(&ad->dht);
+        return NULL;
+    }
+
+    msg->action = ACT_REQUEST_FIND_NODE;
+    msg->pkt.dir = PKT_DIR_TX;
+    msg->m.find_node_req.id_len = 20;
+    memcpy(msg->m.find_node_req.id, ad->this_node->node.id.data, 20);
+
+    t = task_new(&ad->dht, &msg->pkt);
+    if (!t) {
+        azureus_rpc_msg_delete(msg);
+        azureus_dht_delete(&ad->dht);
+        return NULL;
+    }
 
     tinydht_add_task(t);
 
@@ -255,6 +278,7 @@ azureus_task_schedule(struct task *task)
     struct azureus_rpc_msg *msg = NULL;
     struct pkt *pkt = NULL;
     int ret;
+    int i;
 
     ASSERT(task);
 
@@ -266,16 +290,24 @@ azureus_task_schedule(struct task *task)
             case PKT_DIR_TX:
                 DEBUG("TX\n");
                 msg = azureus_rpc_msg_get_ref(TAILQ_FIRST(&task->pkt_list));
-                ret = azureus_encode_rpc(msg);
+                ret = azureus_rpc_encode(msg);
                 if (ret != SUCCESS) {
                     return FAILURE;
                 }
+
                 ret = sendto(task->dht->net_if.sock, pkt->data, pkt->len, 0, 
-                        (struct sockaddr *)&pkt->ss, sizeof(struct sockaddr_storage));
+                        (struct sockaddr *)&pkt->ss, 
+                        sizeof(struct sockaddr_in));
                 if (ret < 0) {
                     ERROR("sendto() - %s\n", strerror(errno));
                     return FAILURE;
                 }
+                DEBUG("sending %d bytes to %s/%hu\n", 
+                        ret,
+                        inet_ntoa(((struct sockaddr_in *)&pkt->ss)->sin_addr),
+                            ntohs(((struct sockaddr_in *)&pkt->ss)->sin_port));
+
+                break;
 
             default:
                 return FAILURE;
@@ -283,5 +315,23 @@ azureus_task_schedule(struct task *task)
     }
 
     return SUCCESS;
+}
+
+int
+azureus_rpc_tx(struct dht *dht, struct azureus_rpc_msg *msg)
+{
+    ASSERT(dht && msg);
+
+    return SUCCESS;
+}
+
+int
+azureus_rpc_rx(struct dht *dht, 
+                    struct sockaddr_storage *from, 
+                    size_t fromlen,
+                    u8 *data, 
+                    int len)
+{
+    return azureus_rpc_decode(dht, from, fromlen, data, len);
 }
 

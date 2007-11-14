@@ -116,7 +116,7 @@ dht_new(struct dht *dht, unsigned int type,
         if (dht_table[i]->type == type) {
             dht->get = dht_table[i]->get;
             dht->put = dht_table[i]->put;
-            dht->decode_rpc = dht_table[i]->decode_rpc;
+            dht->rpc_rx = dht_table[i]->rpc_rx;
             dht->task_schedule = dht_table[i]->task_schedule;
             break;
         }

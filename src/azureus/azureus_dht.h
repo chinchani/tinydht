@@ -46,12 +46,15 @@ azureus_dht_get_ref(struct dht *dht)
     return container_of(dht, struct azureus_dht, dht);
 }
 
-#define DHT_BOOTSTRAP_HOST      "ae2.aelitis.com"
+#define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
+#define DHT_BOOTSTRAP_PORT      6881
 
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
 int azureus_dht_put(struct dht *dht, struct tinydht_msg *msg);
 int azureus_dht_get(struct dht *dht, struct tinydht_msg *msg);
 int azureus_task_schedule(struct task *task);
+int azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
+                    size_t fromlen, u8 *data, int len);
 
 #endif /* __AZUREUS_DHT_H__ */

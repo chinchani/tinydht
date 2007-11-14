@@ -36,7 +36,7 @@ enum pkt_dir {
 };
 
 struct pkt {
-    enum pkt_dir                dir;
+    enum pkt_dir                dir;    /* outgoing/incoming? */
     struct sockaddr_storage     ss;
     u_int8_t                    data[MAX_PKT_LEN];
     unsigned int                len;    /* actual pkt len */

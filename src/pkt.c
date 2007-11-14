@@ -49,7 +49,7 @@ int
 pkt_sanity(struct pkt *pkt)
 {
     ASSERT(pkt);
-    ASSERT(pkt->cursor < pkt->len);
+    ASSERT(pkt->cursor <= pkt->len);
     ASSERT(pkt->dht);
     return SUCCESS;
 }
@@ -423,7 +423,7 @@ pkt_dump(struct pkt *pkt)
         }
         printf("\n");
 
-        len -= max_row;
+        len -= max_col;
     }
     printf("\n");
 

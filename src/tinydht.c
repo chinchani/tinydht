@@ -467,7 +467,6 @@ tinydht_init_service(void)
     struct sockaddr_in6 addr6;
 
     /* setup for ipv4 */
-
     sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0) {
         /* FIXME: should we abort here? */
@@ -506,7 +505,6 @@ tinydht_init_service(void)
 
 
     /* setup for ipv6 */
-
     sock = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0) {
         /* FIXME: should we abort here? */
@@ -698,6 +696,7 @@ tinydht_poll_loop(void)
         } else {
 
             /* read the data */
+            fromlen = sizeof(struct sockaddr_storage);
             len = recvfrom(poll_fd[i], buf, sizeof(buf), 0, 
                     (struct sockaddr *)&from, &fromlen);
             if (len <= 0) {
@@ -712,7 +711,7 @@ tinydht_poll_loop(void)
                 return FAILURE;
             }
 
-            ret = dht->decode_rpc(dht, &from, fromlen, buf, len);
+            ret = dht->rpc_rx(dht, &from, fromlen, buf, len);
             if (ret != SUCCESS) {
                 continue;
             }
@@ -726,33 +725,15 @@ int
 tinydht_task_schedule(void)
 {
     struct task *task = NULL;
-    bool found = FALSE;
     int ret;
 
     TAILQ_FOREACH(task, &task_list, next) {
-
-        found = FALSE;
-
-        switch (task->state) {
-            case TASK_STATE_RUNNABLE:
-                found = TRUE;
-                break;
-            case TASK_STATE_WAIT:
-                break;
-            default:
-                break;
-        }
-
-        if (found) {
-            break;
-        }
-    }
-
-    if (found) {
         ret = task->dht->task_schedule(task);
         if (ret != SUCCESS) {
             return ret;
         }
+
+        tinydht_delete_task(task);
     }
 
     return SUCCESS;

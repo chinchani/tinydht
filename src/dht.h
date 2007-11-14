@@ -53,7 +53,7 @@ struct dht {
     /* DHT api */
     int (*get)(struct dht *dht, struct tinydht_msg *msg);
     int (*put)(struct dht *dht, struct tinydht_msg *msg);
-    int (*decode_rpc)(struct dht *dht, struct sockaddr_storage *from, 
+    int (*rpc_rx)(struct dht *dht, struct sockaddr_storage *from, 
                         size_t fromlen, u8 *data, int len);
     int (*task_schedule)(struct task *task);
 };
