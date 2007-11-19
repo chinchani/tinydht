@@ -29,7 +29,7 @@
 #include "azureus_vivaldi.h"
 #include "node.h"
 
-#define AZUREUS_RPC_TIMEOUT     20 /* seconds */
+#define AZUREUS_RPC_TIMEOUT     20*1000*1000 /* 20 seconds */
 
 enum azureus_protocol_version {
    PROTOCOL_VERSION_2304 = 8,

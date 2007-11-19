@@ -143,6 +143,12 @@ azureus_rpc_encode(struct azureus_rpc_msg *msg)
             return FAILURE;
     }
 
+    ret = msg_is_rpc_req(msg, &msg->is_req);
+    if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return FAILURE;
+    }
+
     pkt_dump(&msg->pkt);
 
     return SUCCESS;
@@ -385,6 +391,8 @@ azureus_rpc_match_req_rsp(struct azureus_rpc_msg *req,
 {
     ASSERT(req && rsp);
     ASSERT(req->is_req && !rsp->is_req);
+
+    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
 
     if (req->p.pr_udp_req.conn_id == rsp->u.udp_rsp.conn_id) {
         return TRUE;

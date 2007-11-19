@@ -177,6 +177,29 @@ azureus_dht_delete(struct dht *dht)
     return;
 }
 
+void
+azureus_task_delete(struct task *task)
+{
+    struct azureus_dht *ad = NULL;
+    struct pkt *pkt = NULL;
+    struct azureus_rpc_msg *msg = NULL;
+
+    ASSERT(task);
+
+    ad = azureus_dht_get_ref(task->dht);
+
+    TAILQ_REMOVE(&ad->task_list, task, next);
+
+    TAILQ_FOREACH(pkt, &task->pkt_list, next) {
+        msg = azureus_rpc_msg_get_ref(pkt);
+        azureus_rpc_msg_delete(msg);
+    }
+
+    task_delete(task);
+
+    return;
+}
+
 int 
 azureus_task_schedule(struct dht *dht)
 {
@@ -193,6 +216,12 @@ azureus_task_schedule(struct dht *dht)
     TAILQ_FOREACH(task, &ad->task_list, next) {
 
         if (task->state == TASK_STATE_WAIT) {
+            /* was there a timeout? */
+            if ((dht_get_current_time() - task->access_time) > 
+                                                AZUREUS_RPC_TIMEOUT) {
+                DEBUG("task timed out\n");
+                azureus_task_delete(task);
+            }
             continue;
         }
 
@@ -213,19 +242,7 @@ azureus_task_schedule(struct dht *dht)
                     return FAILURE;
                 }
 
-                ret = sendto(dht->net_if.sock, pkt->data, pkt->len, 0, 
-                        (struct sockaddr *)&pkt->ss, 
-                        sizeof(struct sockaddr_in));
-                if (ret < 0) {
-                    ERROR("sendto() - %s\n", strerror(errno));
-                    return FAILURE;
-                }
-                DEBUG("sending %d bytes to %s/%hu\n", 
-                        ret,
-                        inet_ntoa(((struct sockaddr_in *)&pkt->ss)->sin_addr),
-                            ntohs(((struct sockaddr_in *)&pkt->ss)->sin_port));
-
-                task->state = TASK_STATE_WAIT;
+                azureus_rpc_tx(dht, task, msg);
 
                 break;
 
@@ -238,9 +255,26 @@ azureus_task_schedule(struct dht *dht)
 }
 
 int
-azureus_rpc_tx(struct dht *dht, struct azureus_rpc_msg *msg)
+azureus_rpc_tx(struct dht *dht, struct task *task, struct azureus_rpc_msg *msg)
 {
+    int ret;
+
     ASSERT(dht && msg);
+
+    ret = sendto(dht->net_if.sock, msg->pkt.data, msg->pkt.len, 0, 
+                (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
+    if (ret < 0) {
+        ERROR("sendto() - %s\n", strerror(errno));
+        return FAILURE;
+    }
+
+    DEBUG("sending %d bytes to %s/%hu\n", 
+            ret,
+            inet_ntoa(((struct sockaddr_in *)&msg->pkt.ss)->sin_addr),
+            ntohs(((struct sockaddr_in *)&msg->pkt.ss)->sin_port));
+
+    task->state = TASK_STATE_WAIT;
+    task->access_time = dht_get_current_time();
 
     return SUCCESS;
 }
@@ -267,13 +301,14 @@ azureus_rpc_rx(struct dht *dht,
     }
 
     if (msg->is_req) {
-        /* create a response and respond */
+        /* create a response and send */
     } else {
         TAILQ_FOREACH(task, &ad->task_list, next) {
             pkt = TAILQ_FIRST(&task->pkt_list);
             msg1 = azureus_rpc_msg_get_ref(pkt);
-            if (msg1->is_req && azureus_rpc_match_req_rsp(msg1, msg)) {
+            if (azureus_rpc_match_req_rsp(msg1, msg)) {
                 found = TRUE;
+                break;
             }
         }
 
@@ -282,6 +317,8 @@ azureus_rpc_rx(struct dht *dht,
             ERROR("dropped response\n");
             azureus_rpc_msg_delete(msg);
         }
+
+        azureus_task_delete(task);
     }
 
     return SUCCESS;
