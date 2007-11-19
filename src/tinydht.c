@@ -374,11 +374,18 @@ tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
             memcpy(&nat_info.internal, &nif->int_addr, 
                             sizeof(struct sockaddr_in));
 
+#ifdef SKIP_STUN
+            nat_info.external.ss_family = AF_INET;
+            inet_aton("67.161.39.227", 
+                    &(((struct sockaddr_in *)
+                                    &nat_info.external)->sin_addr));
+#else
             /* use STUN to find out the external address */
             ret = stun_get_nat_info(&nat_info);
             if (ret != SUCCESS) {
                 return ret;
             }
+#endif
 
             /* a DHT is useless behind a firewall */
             if (nat_info.nat_type == STUN_FIREWALLED) {
@@ -728,6 +735,12 @@ tinydht_task_schedule(void)
 {
     struct task *task = NULL;
     int ret;
+    static int index = 0;
+
+    /* give every dht instance a time slice */
+    dht[index]->task_schedule(dht[index]);
+    index = (index + 1) % n_dhts;
+#if 0
 
     TAILQ_FOREACH(task, &task_list, next) {
         ret = task->dht->task_schedule(task);
@@ -737,6 +750,7 @@ tinydht_task_schedule(void)
 
         tinydht_delete_task(task);
     }
+#endif
 
     return SUCCESS;
 }

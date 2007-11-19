@@ -29,6 +29,8 @@
 #include "azureus_vivaldi.h"
 #include "node.h"
 
+#define AZUREUS_RPC_TIMEOUT     20 /* seconds */
+
 enum azureus_protocol_version {
    PROTOCOL_VERSION_2304 = 8,
    PROTOCOL_VERSION_2306 = 12,
@@ -237,6 +239,9 @@ void azureus_rpc_msg_delete(struct azureus_rpc_msg *msg);
 
 int azureus_rpc_encode(struct azureus_rpc_msg *msg);
 int azureus_rpc_decode(struct dht *dht, struct sockaddr_storage *from, 
-                            size_t fromlen, u8 *data, int len);
+                            size_t fromlen, u8 *data, int len,
+                            struct azureus_rpc_msg **msg);
+bool azureus_rpc_match_req_rsp(struct azureus_rpc_msg *req, 
+                            struct azureus_rpc_msg *rsp);
 
 #endif /* __AZUREUS_RPC_H__ */

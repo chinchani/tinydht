@@ -28,7 +28,6 @@
 #include "azureus_db.h"
 #include "queue.h"
 
-
 struct azureus_dht {
     struct dht                  dht;
     u32                         trans_id;
@@ -38,6 +37,7 @@ struct azureus_dht {
     u32                         est_dht_size;
     struct azureus_node         *this_node;
     TAILQ_HEAD(db_list_head, azureus_db_item)    db_list;
+    TAILQ_HEAD(task_list_head, task) task_list;
 };
 
 static inline struct azureus_dht *
@@ -53,7 +53,7 @@ struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
 int azureus_dht_put(struct dht *dht, struct tinydht_msg *msg);
 int azureus_dht_get(struct dht *dht, struct tinydht_msg *msg);
-int azureus_task_schedule(struct task *task);
+int azureus_task_schedule(struct dht *dht);
 int azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
                     size_t fromlen, u8 *data, int len);
 

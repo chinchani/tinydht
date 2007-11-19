@@ -25,6 +25,7 @@
 #include "task.h"
 
 struct task;
+struct task_list_head;
 
 #define TINYDHT_SERVICE         ((u16)65521)
 

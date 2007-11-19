@@ -35,6 +35,8 @@ extern int errno;
 #include "azureus_rpc.h"
 #include "azureus_db.h"
 #include "task.h"
+#include "tinydht.h"
+#include "queue.h"
 
 struct dht *
 azureus_dht_new(struct dht_net_if *nif, int port)
@@ -57,6 +59,12 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         azureus_dht_delete(&ad->dht);
         return NULL;
     }
+
+    /* initialize the task list */
+    TAILQ_INIT(&ad->task_list);
+
+    /* initialize the database */
+    TAILQ_INIT(&ad->db_list);
 
     /* initialize Azureus specific stuff */
     ad->proto_ver = PROTOCOL_VERSION_MAIN;
@@ -96,9 +104,8 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     azureus_vivaldi_pos_new(&ad->this_node->netpos, 
                             POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
 
-    TAILQ_INIT(&ad->db_list);
 
-    /* bootstrap from "ae2.aelitis.com:6881" */
+    /* bootstrap from "dht.aelitis.com:6881" */
     he = gethostbyname(DHT_BOOTSTRAP_HOST);
     if (!he) {
         ERROR("%s\n", hstrerror(h_errno));
@@ -112,7 +119,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
                 sizeof(struct in_addr));
     ((struct sockaddr_in *)&ss)->sin_port = htons(DHT_BOOTSTRAP_PORT);
 
-    /* do a PING */
+    /* do a PING, but we don't expect a response! */
     msg = azureus_rpc_msg_new(&ad->dht, &ss, sizeof(struct sockaddr_storage), 
                                 NULL, 0);
     if (!msg) {
@@ -130,7 +137,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
-    tinydht_add_task(t);
+    TAILQ_INSERT_TAIL(&ad->task_list, t, next);
 
     /* do a FIND_NODE on myself */
     msg = azureus_rpc_msg_new(&ad->dht, &ss, sizeof(struct sockaddr_storage), 
@@ -152,7 +159,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
-    tinydht_add_task(t);
+    TAILQ_INSERT_TAIL(&ad->task_list, t, next);
 
     INFO("Azureus DHT listening on port %hu\n", ntohs(ad->dht.port));
 
@@ -168,6 +175,116 @@ azureus_dht_delete(struct dht *dht)
     free(ad);
 
     return;
+}
+
+int 
+azureus_task_schedule(struct dht *dht)
+{
+    struct azureus_dht *ad = NULL;
+    struct azureus_rpc_msg *msg = NULL;
+    struct pkt *pkt = NULL;
+    struct task *task = NULL;
+    int ret;
+
+    ASSERT(dht);
+
+    ad = azureus_dht_get_ref(dht);
+
+    TAILQ_FOREACH(task, &ad->task_list, next) {
+
+        if (task->state == TASK_STATE_WAIT) {
+            continue;
+        }
+
+        pkt = TAILQ_FIRST(&task->pkt_list);
+        msg = azureus_rpc_msg_get_ref(pkt);
+
+        DEBUG("pkt->dir %d\n", pkt->dir);
+        DEBUG("msg->action %d\n", msg->action);
+
+        switch (pkt->dir) {
+            case PKT_DIR_RX:
+                DEBUG("RX\n");
+
+            case PKT_DIR_TX:
+                DEBUG("TX\n");
+                ret = azureus_rpc_encode(msg);
+                if (ret != SUCCESS) {
+                    return FAILURE;
+                }
+
+                ret = sendto(dht->net_if.sock, pkt->data, pkt->len, 0, 
+                        (struct sockaddr *)&pkt->ss, 
+                        sizeof(struct sockaddr_in));
+                if (ret < 0) {
+                    ERROR("sendto() - %s\n", strerror(errno));
+                    return FAILURE;
+                }
+                DEBUG("sending %d bytes to %s/%hu\n", 
+                        ret,
+                        inet_ntoa(((struct sockaddr_in *)&pkt->ss)->sin_addr),
+                            ntohs(((struct sockaddr_in *)&pkt->ss)->sin_port));
+
+                task->state = TASK_STATE_WAIT;
+
+                break;
+
+            default:
+                return FAILURE;
+        }
+    }
+
+    return SUCCESS;
+}
+
+int
+azureus_rpc_tx(struct dht *dht, struct azureus_rpc_msg *msg)
+{
+    ASSERT(dht && msg);
+
+    return SUCCESS;
+}
+
+int
+azureus_rpc_rx(struct dht *dht, 
+                    struct sockaddr_storage *from, size_t fromlen,
+                    u8 *data, int len)
+{
+    struct azureus_dht *ad = NULL;
+    struct azureus_rpc_msg *msg = NULL, *msg1 = NULL;
+    struct pkt *pkt = NULL;
+    struct task *task = NULL;
+    bool found = FALSE;
+    int ret;
+
+    ASSERT(dht && from && data);
+
+    ad = azureus_dht_get_ref(dht);
+
+    ret = azureus_rpc_decode(dht, from, fromlen, data, len, &msg);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    if (msg->is_req) {
+        /* create a response and respond */
+    } else {
+        TAILQ_FOREACH(task, &ad->task_list, next) {
+            pkt = TAILQ_FIRST(&task->pkt_list);
+            msg1 = azureus_rpc_msg_get_ref(pkt);
+            if (msg1->is_req && azureus_rpc_match_req_rsp(msg1, msg)) {
+                found = TRUE;
+            }
+        }
+
+        if (!found) {
+            /* drop this response! */
+            ERROR("dropped response\n");
+            azureus_rpc_msg_delete(msg);
+        }
+    }
+
+    return SUCCESS;
 }
 
 int
@@ -270,68 +387,5 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     }
 
     return FAILURE;
-}
-
-int 
-azureus_task_schedule(struct task *task)
-{
-    struct azureus_rpc_msg *msg = NULL;
-    struct pkt *pkt = NULL;
-    int ret;
-    int i;
-
-    ASSERT(task);
-
-    TAILQ_FOREACH(pkt, &task->pkt_list, next) {
-        switch (pkt->dir) {
-            case PKT_DIR_RX:
-                DEBUG("RX\n");
-
-            case PKT_DIR_TX:
-                DEBUG("TX\n");
-                msg = azureus_rpc_msg_get_ref(TAILQ_FIRST(&task->pkt_list));
-                ret = azureus_rpc_encode(msg);
-                if (ret != SUCCESS) {
-                    return FAILURE;
-                }
-
-                ret = sendto(task->dht->net_if.sock, pkt->data, pkt->len, 0, 
-                        (struct sockaddr *)&pkt->ss, 
-                        sizeof(struct sockaddr_in));
-                if (ret < 0) {
-                    ERROR("sendto() - %s\n", strerror(errno));
-                    return FAILURE;
-                }
-                DEBUG("sending %d bytes to %s/%hu\n", 
-                        ret,
-                        inet_ntoa(((struct sockaddr_in *)&pkt->ss)->sin_addr),
-                            ntohs(((struct sockaddr_in *)&pkt->ss)->sin_port));
-
-                break;
-
-            default:
-                return FAILURE;
-        }
-    }
-
-    return SUCCESS;
-}
-
-int
-azureus_rpc_tx(struct dht *dht, struct azureus_rpc_msg *msg)
-{
-    ASSERT(dht && msg);
-
-    return SUCCESS;
-}
-
-int
-azureus_rpc_rx(struct dht *dht, 
-                    struct sockaddr_storage *from, 
-                    size_t fromlen,
-                    u8 *data, 
-                    int len)
-{
-    return azureus_rpc_decode(dht, from, fromlen, data, len);
 }
 

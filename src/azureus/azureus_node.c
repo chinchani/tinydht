@@ -81,8 +81,6 @@ int
 azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
 {
     u_int8_t digest[20];
-    char namebuf[64];
-    char *name = NULL;
     char buf[64];
     char addr[64];
     socklen_t salen;

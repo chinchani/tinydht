@@ -395,40 +395,9 @@ pkt_peek(struct pkt *pkt, unsigned int offset, void *p, size_t size)
 int
 pkt_dump(struct pkt *pkt)
 {
-    unsigned int width = 16;
-    unsigned int row, col;
-    unsigned int max_row, max_col;
-    char ch;
-    unsigned int len;
-
     ASSERT(pkt && (pkt->len > 0));
 
-    max_row = pkt->len/width + ((pkt->len % width) ? 1 : 0);
-    
-    len = pkt->len;
-
-    printf("pkt (%p) - cursor (%d) len (%d)\n", pkt, pkt->cursor, pkt->len);
-    for (row = 0; row < max_row; row++) {
-        max_col = len / width ? width : len % width;
-        printf("%04x| ", row);
-        for (col = 0; col < max_col; col++) {
-            printf("%02x ", pkt->data[row*width + col]);
-        }
-        for (col = max_col; col < width; col++) {
-            printf("%2s ", "  ");
-        }
-        printf("| ");
-        for (col = 0; col < max_col; col++) {
-            ch = pkt->data[row*width + col];
-            printf("%c", (isprint(ch) ? ch : '.'));
-        }
-        printf("\n");
-
-        len -= max_col;
-    }
-    printf("\n");
-
-    return SUCCESS;
+    return pkt_dump_data(pkt->data, pkt->len);
 }
 
 int
