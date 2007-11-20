@@ -164,7 +164,6 @@ azureus_rpc_decode(struct dht *dht,
 {
     struct azureus_rpc_msg *msg = NULL;
     int ret;
-    u32 action;
 
     msg = azureus_rpc_msg_new(dht, from, fromlen, data, len);
     if (!msg) {
@@ -173,8 +172,9 @@ azureus_rpc_decode(struct dht *dht,
 
     pkt_dump(&msg->pkt);
 
-    ret = msg_get_rpc_action(msg, &action);
+    ret = msg_get_rpc_action(msg, &msg->action);
     if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
         return ret;
     }
 
@@ -184,7 +184,7 @@ azureus_rpc_decode(struct dht *dht,
         return FAILURE;
     }
 
-    switch (action) {
+    switch (msg->action) {
 
         case ACT_REQUEST_PING:
             ret = azureus_rpc_ping_req_decode(msg);
@@ -200,10 +200,12 @@ azureus_rpc_decode(struct dht *dht,
 
         case ACT_REPLY_FIND_NODE:
             DEBUG("REPLY_FIND_NODE\n");
+            TAILQ_INIT(&msg->m.find_node_rsp.node_list);
             ret = azureus_rpc_find_node_rsp_decode(msg);
             break;
 
         case ACT_REQUEST_FIND_VALUE:
+            TAILQ_INIT(&msg->m.find_value_rsp.node_list);
             ret = azureus_rpc_find_value_req_decode(msg);
             break;
 
@@ -221,6 +223,11 @@ azureus_rpc_decode(struct dht *dht,
 
         default:
             return FAILURE;
+    }
+
+    if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return ret;
     }
 
     *m = msg;

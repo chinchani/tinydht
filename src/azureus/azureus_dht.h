@@ -36,8 +36,9 @@ struct azureus_dht {
     u32                         instance_id;
     u32                         est_dht_size;
     struct azureus_node         *this_node;
-    TAILQ_HEAD(db_list_head, azureus_db_item)    db_list;
-    TAILQ_HEAD(task_list_head, task) task_list;
+    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
+    TAILQ_HEAD(azureus_task_list_head, task)            task_list;
+    TAILQ_HEAD(azureus_node_list_head, azureus_node)    new_node_list;
 };
 
 static inline struct azureus_dht *
