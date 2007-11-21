@@ -359,9 +359,11 @@ azureus_rpc_rx(struct dht *dht,
         /* if the reply contained new nodes, 
          * add them to the new node list */
         if (msg->action == ACT_REPLY_FIND_NODE) {
-            TAILQ_FOREACH(an, &msg->m.find_node_rsp.node_list, next) {
-                TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
-//                TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
+            while (msg->m.find_node_rsp.node_list.tqh_first != NULL) {
+                an = TAILQ_FIRST(&msg->m.find_node_rsp.node_list);
+                TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, 
+                            msg->m.find_node_rsp.node_list.tqh_first, next);
+                TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
                 DEBUG("new node %p\n", an);
             }
         } else if (msg->action == ACT_REPLY_FIND_VALUE) {
