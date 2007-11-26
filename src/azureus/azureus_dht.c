@@ -29,6 +29,7 @@ extern int h_errno;
 extern int errno;
 
 #include "azureus_dht.h"
+#include "azureus_node.h"
 #include "dht_types.h"
 #include "types.h"
 #include "crypto.h"
@@ -37,10 +38,13 @@ extern int errno;
 #include "task.h"
 #include "tinydht.h"
 #include "queue.h"
+#include "kbucket.h"
 
 static int azureus_rpc_tx(struct dht *dht, struct task *task, 
                             struct azureus_rpc_msg *msg);
 static int azureus_dht_add_ping_node_task(struct azureus_dht *ad, 
+                            struct azureus_node *an);
+static int azureus_dht_add_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
 
 struct dht *
@@ -132,6 +136,8 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     if (!bootstrap) {
         return NULL;
     }
+
+    azureus_dht_add_node(ad, bootstrap);
 
     /* azureus_node_ping(bootstrap); */
     azureus_dht_add_ping_node_task(ad, bootstrap);
@@ -338,8 +344,15 @@ azureus_rpc_rx(struct dht *dht,
                 /* process the PING reply */
                 /* update vivaldi */
                 /* add this node to the corresponding kbucket */
+                an = azureus_node_get_ref(task->node);
+                memcpy(&an->netpos, &msg->viv_pos[0], 
+                        sizeof(struct azureus_vivaldi_pos));
                 rtt = 1.0*(curr_time - task->access_time)/1000000;
+                azureus_vivaldi_v1_update(&ad->this_node->netpos, rtt, 
+                                        &msg->viv_pos[0], 
+                                        msg->viv_pos[0].v.v1.err); 
                 DEBUG("RTT %f\n", rtt);
+                azureus_dht_add_node(ad, an);
                 break;
 
             case ACT_REPLY_FIND_NODE:
@@ -495,8 +508,26 @@ azureus_dht_add_ping_node_task(struct azureus_dht *ad, struct azureus_node *an)
         azureus_rpc_msg_delete(msg);
         return FAILURE;
     }
+    task->node = &an->node;
 
     TAILQ_INSERT_TAIL(&ad->task_list, task, next);
+
+    return SUCCESS;
+}
+
+static int
+azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
+{
+    int index = 0;
+    int ret;
+
+    index = kbucket_index(&ad->this_node->node.id, &an->node.id);
+
+    key_dump(&ad->this_node->node.id);
+    key_dump(&an->node.id);
+    DEBUG("index %d\n", index);
+
+    ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
 
     return SUCCESS;
 }

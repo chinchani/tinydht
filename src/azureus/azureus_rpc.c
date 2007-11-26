@@ -399,7 +399,7 @@ azureus_rpc_match_req_rsp(struct azureus_rpc_msg *req,
     ASSERT(req && rsp);
     ASSERT(req->is_req && !rsp->is_req);
 
-    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
+//    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
 
     if (req->p.pr_udp_req.conn_id == rsp->u.udp_rsp.conn_id) {
         return TRUE;
@@ -1748,6 +1748,7 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
     for (i = 0; i < msg->n_viv_pos; i++) {
         if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
             v1_found = TRUE;
+            azureus_vivaldi_pos_dump(&msg->viv_pos[i]);
         }
     }
 

@@ -96,7 +96,8 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
             salen = sizeof(struct sockaddr_in);
             in4 = (struct sockaddr_in *)ss;
             port = in4->sin_port;
-            pret = inet_ntop(ss->ss_family, (void *)&in4->sin_addr, addr, sizeof(addr));
+            pret = inet_ntop(ss->ss_family, (void *)&in4->sin_addr, 
+                                addr, sizeof(addr));
             if (!pret) {
                 return FAILURE;
             }

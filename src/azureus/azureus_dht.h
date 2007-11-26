@@ -24,9 +24,10 @@
 #include "types.h"
 #include "dht.h"
 #include "task.h"
+#include "kbucket.h"
+#include "queue.h"
 #include "azureus_node.h"
 #include "azureus_db.h"
-#include "queue.h"
 
 struct azureus_dht {
     struct dht                  dht;
@@ -39,6 +40,7 @@ struct azureus_dht {
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
     TAILQ_HEAD(azureus_task_list_head, task)            task_list;
     TAILQ_HEAD(azureus_node_list_head, azureus_node)    new_node_list;
+    struct kbucket              kbucket[160];
 };
 
 static inline struct azureus_dht *
@@ -49,6 +51,9 @@ azureus_dht_get_ref(struct dht *dht)
 
 #define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
 #define DHT_BOOTSTRAP_PORT      6881
+
+#define AZUREUS_K               20      /* minimum no. of nodes in a kbucket */
+#define AZUREUS_W               4
 
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);

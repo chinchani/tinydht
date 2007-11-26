@@ -24,27 +24,16 @@
 
 #include "kbucket.h"
 
-struct kbucket *
-kbucket_new(void)
+int 
+kbucket_new(struct kbucket *k)
 {
-    struct kbucket *k = NULL;
-
-    k = (struct kbucket *) malloc(sizeof(struct kbucket));
-    if (!k) {
-        return NULL;
-    }
+    ASSERT(k);
 
     bzero(k, sizeof(struct kbucket));
     k->node_count = 0;
     LIST_INIT(&k->node_list);
 
-    return k;
-}
-
-void
-kbucket_delete(struct kbucket *k)
-{
-    free(k);
+    return SUCCESS;
 }
 
 int
@@ -56,34 +45,8 @@ kbucket_insert_node(struct kbucket *k, struct node *n)
         return SUCCESS;
     }
     
-    if (k->node_count < KBUCKET_MAX_NODES) {
-        LIST_INSERT_HEAD(&k->node_list, n, next);
-        return SUCCESS;
-    }
-
     LIST_INSERT_HEAD(&k->node_list, n, next);
 
-#if 0
-    /* FIXME: let each dht_instance handle this is its own way! */
-    LIST_FOREACH(tn, &k->node_list, next) {
-        switch (tn->state) {
-            case NODE_STATE_GOOD:
-                continue;
-            case NODE_STATE_BAD:
-                // list_delete(&tn->list, &k->node_list);
-                LIST_INSERT_HEAD(&k->node_list, n, next);
-                // list_add_tail(&n->list, &k->node_list);
-                break;
-            case NODE_STATE_QUESTIONABLE:
-                /* FIXME: create a new ping task, and return */
-                break;
-            default:
-                ASSERT(0);
-                break;
-        }
-    }
-#endif
-    
     return SUCCESS;
 }
 
@@ -110,14 +73,12 @@ kbucket_index(struct key *self, struct key *k)
 
     ASSERT(self && k);
     
-    ret = key_xor(self, k, &xor);
+    ret = key_distance(self, k, &xor);
 
     for (index = 0; index < k->len; index++) {
-        if (key_nth_bit(&xor, (k->len - 1) - index) != 0)
+        if (key_nth_bit(&xor, (k->len*8*sizeof(k->data[0]) - 1) - index) != 0)
             break;
     }
-
-    key_delete(&xor);
 
     return index;
 }

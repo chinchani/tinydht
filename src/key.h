@@ -39,13 +39,12 @@ struct key {
 };
 
 int key_new(struct key *k, enum key_type type, void *data, int data_len);
-int key_delete(struct key *k);
 
 int key_xor(struct key *k1, struct key *k2, struct key *xor);
 int key_distance(struct key *k1, struct key *k2, struct key *dist);
 
 int key_cmp(struct key *k1, struct key *k2);
-int key_nth_bit(struct key *k, int n);
+int key_nth_bit(struct key *k, unsigned n);
 int key_get_size_from_type(enum key_type type);
 
 void key_dump(struct key *k);

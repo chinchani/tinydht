@@ -69,26 +69,6 @@ key_new(struct key *k, enum key_type type, void *data, int data_len)
     return SUCCESS;
 }
 
-struct key *
-key_clone(struct key *k)
-{
-    struct key *clone = NULL;
-
-    clone = (struct key *) malloc(sizeof(struct key));
-    bzero(clone, sizeof(struct key));
-
-    memcpy(clone, k, sizeof(struct key));
-    return clone;
-}
-
-int
-key_delete(struct key *k)
-{
-    ASSERT(k);
-
-    return SUCCESS;
-}
-
 int
 key_xor(struct key *k1, struct key *k2, struct key *xor)
 {
@@ -99,6 +79,7 @@ key_xor(struct key *k1, struct key *k2, struct key *xor)
     for (i = 0; i < k1->len; i++) {
         xor->data[i] = k1->data[i] ^ k2->data[i];
     }
+    xor->len = k1->len;
 
     return SUCCESS;
 }
@@ -130,18 +111,18 @@ key_cmp(struct key *k1, struct key *k2)
 }
 
 int
-key_nth_bit(struct key *k, int n)
+key_nth_bit(struct key *k, unsigned n)
 {
     int which_byte = 0;
     int which_bit = 0;
     int bit_val = 0;
 
-    ASSERT(k && (n >= 0) && (n < k->len));
+    ASSERT(k && (n < k->len*8*sizeof(k->data[0])));
 
-    which_byte = n / sizeof(k->data[0]);
-    which_bit = n % sizeof(k->data[0]);
+    which_byte = k->len - (n/(8*sizeof(k->data[0]))) - 1;
+    which_bit = n % (8*sizeof(k->data[0]));
 
-    bit_val = k->data[which_byte] & (1 << which_bit);
+    bit_val = (k->data[which_byte] & (1 << which_bit)) >> which_bit;
 
     ASSERT((bit_val == ZERO) || (bit_val == ONE));
 

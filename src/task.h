@@ -24,6 +24,7 @@
 #include "dht.h"
 #include "pkt.h"
 #include "queue.h"
+#include "node.h"
 
 enum task_state {
     TASK_STATE_UNKNOWN = 0,
@@ -36,6 +37,7 @@ struct task {
     u64                                 creation_time;
     u64                                 access_time;
     struct dht                          *dht;
+    struct node                         *node;
     TAILQ_HEAD(pkt_list_head, pkt)      pkt_list;
     TAILQ_ENTRY(task)                   next;
 };

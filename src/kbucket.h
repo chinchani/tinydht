@@ -27,16 +27,14 @@
 #include "key.h"
 #include "debug.h"
 
-#define KBUCKET_MAX_NODES       8   /* max. no. of nodes in a kbucket */
-
 struct kbucket {
-    int                             depth;
-    int                             node_count;     /* no. of nodes in this kbucket */
+    int         depth;
+    int         node_count;     /* no. of nodes in this kbucket */
+    u64         last_refresh;                    
     LIST_HEAD(node_list_head, node) node_list;
 };
 
-struct kbucket * kbucket_new(void);
-void kbucket_delete(struct kbucket *k);
+int kbucket_new(struct kbucket *k);
 
 int kbucket_insert_node(struct kbucket *k, struct node *n);
 int kbucket_index(struct key *self, struct key *k);

@@ -51,7 +51,7 @@ struct azureus_node_serialized {
 } __attribute__ ((__packed__));
 
 static inline struct azureus_node *
-azureus_get_node_ref(struct node *node)
+azureus_node_get_ref(struct node *node)
 {
     return container_of(node, struct azureus_node, node);
 }

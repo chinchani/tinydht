@@ -384,7 +384,8 @@ retry:
         *pos = new_pos;
         pos->v.v1.err = new_err > ERROR_MIN ? new_err : ERROR_MIN;
     } else {
-        azureus_vivaldi_pos_new(pos, POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
+        azureus_vivaldi_pos_new(pos, POSITION_TYPE_VIVALDI_V1, 
+                                0.0f, 0.0f, 0.0f);
         pos->v.v1.err = initial_err;
     }
 
