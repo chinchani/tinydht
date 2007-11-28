@@ -55,7 +55,10 @@ azureus_dht_get_ref(struct dht *dht)
 #define AZUREUS_K               20      /* minimum no. of nodes in a kbucket */
 #define AZUREUS_W               4
 
-#define MAX_RPC_RETRIES         3
+#define MAX_RPC_RETRIES         1
+
+#define MAX_PING_TIMEOUT        60*1000*1000
+#define MAX_FIND_NODE_TIMEOUT   60*1000*1000
 
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
