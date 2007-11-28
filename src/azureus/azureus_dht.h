@@ -55,12 +55,14 @@ azureus_dht_get_ref(struct dht *dht)
 #define AZUREUS_K               20      /* minimum no. of nodes in a kbucket */
 #define AZUREUS_W               4
 
+#define MAX_RPC_RETRIES         3
+
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
 int azureus_dht_put(struct dht *dht, struct tinydht_msg *msg);
 int azureus_dht_get(struct dht *dht, struct tinydht_msg *msg);
 int azureus_task_schedule(struct dht *dht);
 int azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
-                    size_t fromlen, u8 *data, int len);
+                    size_t fromlen, u8 *data, int len, u64 timestamp);
 
 #endif /* __AZUREUS_DHT_H__ */

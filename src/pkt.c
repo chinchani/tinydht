@@ -45,6 +45,17 @@ pkt_new(struct pkt *pkt, struct dht *dht,
     return SUCCESS;
 }
 
+void
+pkt_reset_data(struct pkt *pkt)
+{
+    bzero(pkt->data, sizeof(pkt->data));
+    pkt->len = 0;
+    pkt->cursor = 0;
+    pkt->mark_pos = 0;
+    pkt->mark_rdlim = 0;
+    return;
+}
+
 int
 pkt_sanity(struct pkt *pkt)
 {

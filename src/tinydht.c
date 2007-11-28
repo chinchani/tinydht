@@ -690,6 +690,10 @@ tinydht_poll_loop(void)
                 continue;
             }
 
+            INFO("received pkt from %s:%hu\n", 
+                    inet_ntoa((((struct sockaddr_in *)&from)->sin_addr)), 
+                    ntohs(((struct sockaddr_in *)&from)->sin_port));
+
             /* has it arrived on a dht instance? */
             dht = tinydht_find_dht_from_fd(poll_fd[i]);
             if (!dht) {
@@ -697,7 +701,8 @@ tinydht_poll_loop(void)
                 return FAILURE;
             }
 
-            ret = dht->rpc_rx(dht, &from, fromlen, buf, len);
+            ret = dht->rpc_rx(dht, &from, fromlen, 
+                                buf, len, dht_get_current_time());
             if (ret != SUCCESS) {
                 continue;
             }

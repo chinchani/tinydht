@@ -23,7 +23,7 @@
 
 #include "types.h"
 
-#define KEY_MAX_SIZE        32
+#define KEY_MAX_SIZE        20
 
 enum key_type {
     KEY_TYPE_UNKNOWN = 0,

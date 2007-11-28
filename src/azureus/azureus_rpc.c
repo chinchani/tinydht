@@ -399,7 +399,7 @@ azureus_rpc_match_req_rsp(struct azureus_rpc_msg *req,
     ASSERT(req && rsp);
     ASSERT(req->is_req && !rsp->is_req);
 
-//    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
+    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
 
     if (req->p.pr_udp_req.conn_id == rsp->u.udp_rsp.conn_id) {
         return TRUE;

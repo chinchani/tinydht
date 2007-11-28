@@ -38,7 +38,7 @@ struct dht_prototype {
     int (*get)(struct dht *dht, struct tinydht_msg *msg);
     int (*put)(struct dht *dht, struct tinydht_msg *msg);
     int (*rpc_rx)(struct dht *dht, struct sockaddr_storage *from, 
-                    size_t fromlen, u8 *data, int len);
+                    size_t fromlen, u8 *data, int len, u64 timestamp);
     int (*task_schedule)(struct dht *dht);
 };
 

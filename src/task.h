@@ -40,6 +40,7 @@ struct task {
     struct node                         *node;
     TAILQ_HEAD(pkt_list_head, pkt)      pkt_list;
     TAILQ_ENTRY(task)                   next;
+    int                                 retries;
 };
 
 struct task *task_new(struct dht *dht, struct pkt *pkt);
