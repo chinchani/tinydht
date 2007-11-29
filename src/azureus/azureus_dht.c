@@ -79,6 +79,9 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     /* initialize the database */
     TAILQ_INIT(&ad->db_list);
 
+    /* initialize the node list */
+    TAILQ_INIT(&ad->node_list);
+
     /* initialize the new node list */
     TAILQ_INIT(&ad->new_node_list);
 
@@ -140,7 +143,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
-    azureus_dht_add_node(ad, bootstrap);
+    ad->bootstrap = bootstrap;
 
     /* send a PING, but don't expect any response */
     azureus_dht_add_ping_task(ad, bootstrap);
@@ -170,24 +173,24 @@ azureus_task_delete(struct task *task)
     struct azureus_dht *ad = NULL;
     struct pkt *pkt = NULL, *pktn = NULL;
     struct azureus_rpc_msg *msg = NULL;
+    struct azureus_node *an = NULL;
 
     ASSERT(task);
 
     ad = azureus_dht_get_ref(task->dht);
+    an = azureus_node_get_ref(task->node);
 
     TAILQ_REMOVE(&ad->task_list, task, next);
     DEBUG("Deleted task %p\n", task);
 
-    for (pkt = TAILQ_FIRST(&task->pkt_list);
-            pkt != TAILQ_END(&task->pkt_list);
-            pkt = pktn) {
-        pktn = TAILQ_NEXT(pkt, next);
-
+    TAILQ_FOREACH_SAFE(pkt, &task->pkt_list, next, pktn) {
         msg = azureus_rpc_msg_get_ref(pkt);
         azureus_rpc_msg_delete(msg);
     }
 
     task_delete(task);
+
+    an->task_pending = FALSE;
 
     return;
 }
@@ -206,25 +209,17 @@ azureus_task_schedule(struct dht *dht)
 
     ad = azureus_dht_get_ref(dht);
 
-    /* kbucket refresh logic */
-    azureus_dht_kbucket_refresh(ad);
-
     /* process the new node list */
-    for (an = TAILQ_FIRST(&ad->new_node_list);
-            an != TAILQ_END(&ad->new_node_list);
-            an = ann) {
-        ann = TAILQ_NEXT(an, next);
-
+    TAILQ_FOREACH_SAFE(an, &ad->new_node_list, next, ann) {
         DEBUG("remove new node %p\n", an);
         TAILQ_REMOVE(&ad->new_node_list, an, next);
         azureus_dht_add_ping_task(ad, an);
     }
 
-    for (task = TAILQ_FIRST(&ad->task_list);
-            task != TAILQ_END(&ad->task_list);
-            task = taskn) {
-        taskn = TAILQ_NEXT(task, next);
+    /* kbucket refresh */
+    azureus_dht_kbucket_refresh(ad);
 
+    TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
         if (task->state == TASK_STATE_WAIT) {
             /* was there a timeout? */
             if ((dht_get_current_time() - task->access_time) 
@@ -235,6 +230,8 @@ azureus_task_schedule(struct dht *dht)
 
             if (task->retries == 0) {
                 DEBUG("task timed out\n");
+                an = azureus_node_get_ref(task->node);
+                an->alive = FALSE;
                 azureus_task_delete(task);      
                 continue;
             } else {
@@ -277,6 +274,7 @@ azureus_task_schedule(struct dht *dht)
 static int
 azureus_rpc_tx(struct dht *dht, struct task *task, struct azureus_rpc_msg *msg)
 {
+    struct azureus_node *an = NULL;
     int ret;
 
     ASSERT(dht && msg);
@@ -295,6 +293,19 @@ azureus_rpc_tx(struct dht *dht, struct task *task, struct azureus_rpc_msg *msg)
 
     task->state = TASK_STATE_WAIT;
     task->access_time = dht_get_current_time();
+
+    an = azureus_node_get_ref(task->node);
+
+    switch (msg->action) {
+        case ACT_REQUEST_PING:
+            an->last_ping = dht_get_current_time();
+            break;
+        case ACT_REQUEST_FIND_NODE:
+            an->last_find_node = dht_get_current_time();
+            break;
+        default:
+            break;
+    }
 
     return SUCCESS;
 }
@@ -365,6 +376,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                     break;
                 }
 
+                an->alive = TRUE;
                 azureus_dht_add_node(ad, an);
 
                 break;
@@ -372,32 +384,26 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
             case ACT_REPLY_FIND_NODE:
                 /* if the reply contained new nodes, 
                  * add them to the new node list */
-                for (an = TAILQ_FIRST(&msg->m.find_node_rsp.node_list);
-                        an != TAILQ_END(&msg->m.find_node_rsp.node_list);
-                        an = ann) {
-                    ann = TAILQ_NEXT(an, next);
-
+                TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
+                                                                    next, ann) {
                     TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
                     if (!azureus_dht_contains_new_node(ad, an)) {
                         TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
+                        DEBUG("Added new node %p\n", an);
                     }
-                    DEBUG("added new node %p\n", an);
                 }
                 break;
 
             case ACT_REPLY_FIND_VALUE:
                 /* if the reply contained new nodes, 
                  * add them to the new node list */
-                for (an = TAILQ_FIRST(&msg->m.find_value_rsp.node_list);
-                        an != TAILQ_END(&msg->m.find_value_rsp.node_list);
-                        an = ann) {
-                    ann = TAILQ_NEXT(an, next);
-
+                TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
+                                                                    next, ann) {
                     TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
                     if (!azureus_dht_contains_new_node(ad, an)) {
                         TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
+                        DEBUG("Added new node %p\n", an);
                     }
-                    DEBUG("added new node %p\n", an);
                 }
                 break;
 
@@ -436,11 +442,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
     ad = azureus_dht_get_ref(dht);
 
     /* delete a duplicate! */
-    for (item = TAILQ_FIRST(&ad->db_list);
-            item != TAILQ_END(&ad->db_list);
-            item = itemn) {
-        itemn = TAILQ_NEXT(item, next);
-
+    TAILQ_FOREACH_SAFE(item, &ad->db_list, next, itemn) {
         if (azureus_db_item_match_key(item, msg->req.key, msg->req.key_len)) {
             DEBUG("key already exists - deleting item\n");
             azureus_db_item_delete(item);
@@ -525,6 +527,10 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
 
     ASSERT(ad && an);
 
+    if ((ad->bootstrap != an) && an->task_pending) {
+        return FAILURE;
+    }
+
     msg = azureus_rpc_msg_new(&ad->dht, &an->ext_addr, 
                                 sizeof(struct sockaddr_storage), NULL, 0);
     if (!msg) {
@@ -543,9 +549,9 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
     task->retries = MAX_RPC_RETRIES;
 
     TAILQ_INSERT_TAIL(&ad->task_list, task, next);
-    DEBUG("Added new PING task %p\n", task);
+    an->task_pending = TRUE;
 
-    an->last_ping = dht_get_current_time();
+    DEBUG("Added new PING task %p\n", an);
 
     return SUCCESS;
 }
@@ -558,6 +564,10 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
     struct task *task = NULL;
 
     ASSERT(ad && an && node_id);
+
+    if ((ad->bootstrap != an) && an->task_pending) {
+        return FAILURE;
+    }
 
     msg = azureus_rpc_msg_new(&ad->dht, &an->ext_addr, 
                                 sizeof(struct sockaddr_storage), NULL, 0);
@@ -580,9 +590,9 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
     task->retries = MAX_RPC_RETRIES;
 
     TAILQ_INSERT_TAIL(&ad->task_list, task, next);
-    DEBUG("Added new FIND_NODE task %p\n", task);
+    an->task_pending = TRUE;
 
-    an->last_find_node = dht_get_current_time();
+    DEBUG("Added new FIND_NODE task %p\n", an);
 
     return SUCCESS;
 }
@@ -609,12 +619,16 @@ azureus_dht_contains_new_node(struct azureus_dht *ad,
                                 struct azureus_node *new_node)
 {
     struct azureus_node *an = NULL, *ann = NULL;
+    int index;
 
-    for (an = TAILQ_FIRST(&ad->new_node_list);
-            an != TAILQ_END(&ad->new_node_list);
-            an = ann) {
-        ann = TAILQ_NEXT(an, next);
+    /* is this in any kbucket? */
+    index = kbucket_index(&ad->this_node->node.id, &new_node->node.id);
+    if (kbucket_contains_node(&ad->kbucket[index], &new_node->node)) {
+        return TRUE;
+    }
 
+    /* is this in the new node list? */
+    TAILQ_FOREACH_SAFE(an, &ad->node_list, next, ann) {
         if (key_cmp(&an->node.id, &new_node->node.id) == 0) {
             return TRUE;
         }
@@ -634,19 +648,16 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     for (i = 0; i < 160; i++) {
         kbucket = &ad->kbucket[i];
 
-        for (node = LIST_FIRST(&kbucket->node_list);
-                node != LIST_END(&kbucket_node_list);
-                node = noden) {
-            noden = LIST_NEXT(node, next);
-
+        LIST_FOREACH_SAFE(node, &kbucket->node_list, next, noden) {
             an = azureus_node_get_ref(node);
             if ((dht_get_current_time() - an->last_ping) 
                     > MAX_PING_TIMEOUT) {
                 /* create a ping task */
+                azureus_dht_add_ping_task(ad, an);
             }
 
-            if ((dht_get_current_time() - an->last_find_node) 
-                    > MAX_FIND_NODE_TIMEOUT) {
+            if (an->alive && ((dht_get_current_time() - an->last_find_node) 
+                    > MAX_FIND_NODE_TIMEOUT)) {
                 /* create a find_node task */
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }

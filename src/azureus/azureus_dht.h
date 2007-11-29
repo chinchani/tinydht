@@ -37,9 +37,11 @@ struct azureus_dht {
     u32                         instance_id;
     u32                         est_dht_size;
     struct azureus_node         *this_node;
-    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
-    TAILQ_HEAD(azureus_task_list_head, task)            task_list;
-    TAILQ_HEAD(azureus_node_list_head, azureus_node)    new_node_list;
+    struct azureus_node         *bootstrap;
+    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
+    TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
+    TAILQ_HEAD(azureus_node_list_head, azureus_node)            node_list;
+    TAILQ_HEAD(azureus_new_node_list_head, azureus_node)        new_node_list;
     struct kbucket              kbucket[160];
 };
 
@@ -55,7 +57,7 @@ azureus_dht_get_ref(struct dht *dht)
 #define AZUREUS_K               20      /* minimum no. of nodes in a kbucket */
 #define AZUREUS_W               4
 
-#define MAX_RPC_RETRIES         1
+#define MAX_RPC_RETRIES         0
 
 #define MAX_PING_TIMEOUT        60*1000*1000
 #define MAX_FIND_NODE_TIMEOUT   60*1000*1000

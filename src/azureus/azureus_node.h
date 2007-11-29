@@ -43,6 +43,8 @@ struct azureus_node {
     u32                                 rnd_id;         /* anti-spoof */
     struct azureus_vivaldi_pos          netpos;
     TAILQ_ENTRY(azureus_node)           next;
+    bool                                task_pending;
+    bool                                alive;
     u64                                 last_ping;
     u64                                 last_find_node;
 };
