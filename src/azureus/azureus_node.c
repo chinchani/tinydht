@@ -146,7 +146,7 @@ azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
                             addr, ntohs(port));
     }
 
-    DEBUG("%s\n", buf);
+    DEBUG("%#x %s\n", proto_ver, buf);
 
     ret = crypto_get_sha1_digest(buf, len, digest);
     if (ret != SUCCESS) {
