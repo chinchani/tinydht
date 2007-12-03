@@ -1,23 +1,20 @@
 /***************************************************************************
- *   Copyright (C) 2007 by Saritha Kalyanam   				   *
- *   kalyanamsaritha@gmail.com                                             *
+ *  Copyright (C) 2007 by Saritha Kalyanam                                 *
+ *  kalyanamsaritha@gmail.com                                              *
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
+ *  This program is free software: you can redistribute it and/or modify   *
+ *  it under the terms of the GNU Affero General Public License as         *
+ *  published by the Free Software Foundation, either version 3 of the     *
+ *  License, or (at your option) any later version.                        *
  *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
+ *  This program is distributed in the hope that it will be useful,        *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU Affero General Public License for more details.                    *
  *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.  *
  ***************************************************************************/
-
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -57,6 +54,8 @@ extern int errno;
 #include "float.h"
 
 extern int h_errno;
+
+#define SKIP_STUN
 
 /*--------------- Global Variables -----------------*/
 
@@ -246,7 +245,7 @@ tinydht_init_sighandlers(void)
     sigaction (SIGINT, &sigact, NULL);
     sigaction (SIGTERM, &sigact, NULL);
     sigaction (SIGHUP, &sigact, NULL);
-    sigaction (SIGSEGV, &sigact, NULL);
+//    sigaction (SIGSEGV, &sigact, NULL);
     sigaction (SIGABRT, &sigact, NULL);
     sigaction (SIGTRAP, &sigact, NULL);
 
@@ -372,11 +371,18 @@ tinydht_get_intf_ext_ip_addr(struct dht_net_if *nif)
             memcpy(&nat_info.internal, &nif->int_addr, 
                             sizeof(struct sockaddr_in));
 
+#ifdef SKIP_STUN
+            nat_info.external.ss_family = AF_INET;
+            inet_aton("67.161.39.227", 
+                    &(((struct sockaddr_in *)
+                                    &nat_info.external)->sin_addr));
+#else
             /* use STUN to find out the external address */
             ret = stun_get_nat_info(&nat_info);
             if (ret != SUCCESS) {
                 return ret;
             }
+#endif
 
             /* a DHT is useless behind a firewall */
             if (nat_info.nat_type == STUN_FIREWALLED) {
@@ -634,7 +640,6 @@ tinydht_poll_loop(void)
             case 0:         /* timeout */
                 continue;
             default:        /* some data is ready */
-                ASSERT(ret == 1);
                 data_avail = TRUE;
                 break;
         }
@@ -690,7 +695,7 @@ tinydht_poll_loop(void)
                 continue;
             }
 
-            INFO("received pkt from %s:%hu\n", 
+            INFO("received %d bytes from %s:%hu\n", len,
                     inet_ntoa((((struct sockaddr_in *)&from)->sin_addr)), 
                     ntohs(((struct sockaddr_in *)&from)->sin_port));
 

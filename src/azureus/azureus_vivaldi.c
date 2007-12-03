@@ -1,28 +1,28 @@
 /***************************************************************************
- *   Copyright (C) 2007 by Saritha Kalyanam                                *
- *   kalyanamsaritha@gmail.com                                             *
+ *  Copyright (C) 2007 by Saritha Kalyanam                                 *
+ *  kalyanamsaritha@gmail.com                                              *
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
+ *  This program is free software: you can redistribute it and/or modify   *
+ *  it under the terms of the GNU Affero General Public License as         *
+ *  published by the Free Software Foundation, either version 3 of the     *
+ *  License, or (at your option) any later version.                        *
  *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
+ *  This program is distributed in the hope that it will be useful,        *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU Affero General Public License for more details.                    *
  *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.  *
  ***************************************************************************/
 
 #include <string.h>
 
 #include "azureus_vivaldi.h"
+
 #include "float.h"
 #include "crypto.h"
+#include "azureus_rpc.h"
 
 static const float initial_err = 10.0f;
 static const float cc = 0.25f;
@@ -407,12 +407,29 @@ retry:
 }
 
 void
-azureus_vivaldi_pos_dump(struct azureus_vivaldi_pos *pos)
+azureus_vivaldi_pos_dump(struct azureus_rpc_msg *msg)
 {
-    ASSERT(pos);
+    int i;
+    struct azureus_vivaldi_pos *pos = NULL;
+    bool v1_found = FALSE;
 
-    DEBUG("%p type:%d x:%f y:%f h:%f err:%f\n", pos, pos->type, 
-            pos->v.v1.x, pos->v.v1.y, pos->v.v1.h, pos->v.v1.err);
+    ASSERT(msg);
+
+    for (i = 0; i < msg->n_viv_pos; i++) {
+        pos = &msg->viv_pos[i];
+        if (pos->type == POSITION_TYPE_VIVALDI_V1) {
+            v1_found = TRUE;
+            break;
+        }
+    }
+
+    if (v1_found) {
+        DEBUG("%s:%hu type:%d x:%f y:%f h:%f err:%f\n", 
+                inet_ntoa(((struct sockaddr_in *)&msg->pkt.ss)->sin_addr),
+                ntohs(((struct sockaddr_in *)&msg->pkt.ss)->sin_port),
+                pos->type, 
+                pos->v.v1.x, pos->v.v1.y, pos->v.v1.h, pos->v.v1.err);
+    }
 
     return;
 }

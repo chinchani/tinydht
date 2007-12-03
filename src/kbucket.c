@@ -1,21 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2007 by Saritha Kalyanam   				   *
- *   kalyanamsaritha@gmail.com                                             *
+ *  Copyright (C) 2007 by Saritha Kalyanam                                 *
+ *  kalyanamsaritha@gmail.com                                              *
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
+ *  This program is free software: you can redistribute it and/or modify   *
+ *  it under the terms of the GNU Affero General Public License as         *
+ *  published by the Free Software Foundation, either version 3 of the     *
+ *  License, or (at your option) any later version.                        *
  *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
+ *  This program is distributed in the hope that it will be useful,        *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU Affero General Public License for more details.                    *
  *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.  *
  ***************************************************************************/
 
 #include <stdlib.h>
@@ -46,6 +44,7 @@ kbucket_insert_node(struct kbucket *k, struct node *n)
     }
     
     LIST_INSERT_HEAD(&k->node_list, n, next);
+    k->node_count++;
 
     return SUCCESS;
 }
@@ -53,9 +52,9 @@ kbucket_insert_node(struct kbucket *k, struct node *n)
 int
 kbucket_contains_node(struct kbucket *k, struct node *n)
 {
-    struct node *tn = NULL;
+    struct node *tn = NULL, *tnn = NULL;
 
-    LIST_FOREACH(tn, &k->node_list, next) {
+    LIST_FOREACH_SAFE(tn, &k->node_list, next, tnn) {
         if (key_cmp(&tn->id, &n->id) == 0) {
             return TRUE;
         }
@@ -67,16 +66,19 @@ kbucket_contains_node(struct kbucket *k, struct node *n)
 int
 kbucket_index(struct key *self, struct key *k)
 {
-    struct key xor;
-    int index;
-    int ret;
+    struct key  xor;
+    int         index;
+    int         max_index;
+    int         ret;
 
     ASSERT(self && k);
     
     ret = key_distance(self, k, &xor);
 
-    for (index = 0; index < k->len; index++) {
-        if (key_nth_bit(&xor, (k->len*8*sizeof(k->data[0]) - 1) - index) != 0)
+    max_index = k->len*8*sizeof(k->data[0]);
+
+    for (index = 0; index < max_index; index++) {
+        if (key_nth_bit(&xor, (max_index - 1) - index) != 0)
             break;
     }
 

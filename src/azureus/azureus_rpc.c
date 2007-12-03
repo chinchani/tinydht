@@ -1,21 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2007 by Saritha Kalyanam   				   *
- *   kalyanamsaritha@gmail.com                                             *
+ *  Copyright (C) 2007 by Saritha Kalyanam                                 *
+ *  kalyanamsaritha@gmail.com                                              *
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
+ *  This program is free software: you can redistribute it and/or modify   *
+ *  it under the terms of the GNU Affero General Public License as         *
+ *  published by the Free Software Foundation, either version 3 of the     *
+ *  License, or (at your option) any later version.                        *
  *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
+ *  This program is distributed in the hope that it will be useful,        *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU Affero General Public License for more details.                    *
  *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.  *
  ***************************************************************************/
 
 #include <stdlib.h>
@@ -199,7 +197,6 @@ azureus_rpc_decode(struct dht *dht,
             break;
 
         case ACT_REPLY_FIND_NODE:
-            DEBUG("REPLY_FIND_NODE\n");
             TAILQ_INIT(&msg->m.find_node_rsp.node_list);
             ret = azureus_rpc_find_node_rsp_decode(msg);
             break;
@@ -1748,7 +1745,7 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
     for (i = 0; i < msg->n_viv_pos; i++) {
         if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
             v1_found = TRUE;
-            azureus_vivaldi_pos_dump(&msg->viv_pos[i]);
+            azureus_vivaldi_pos_dump(msg);
         }
     }
 

@@ -1,21 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2007 by Saritha Kalyanam   				   *
- *   kalyanamsaritha@gmail.com                                             *
+ *  Copyright (C) 2007 by Saritha Kalyanam                                 *
+ *  kalyanamsaritha@gmail.com                                              *
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
+ *  This program is free software: you can redistribute it and/or modify   *
+ *  it under the terms of the GNU Affero General Public License as         *
+ *  published by the Free Software Foundation, either version 3 of the     *
+ *  License, or (at your option) any later version.                        *
  *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
+ *  This program is distributed in the hope that it will be useful,        *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU Affero General Public License for more details.                    *
  *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.  *
  ***************************************************************************/
 
 #include <unistd.h>
@@ -51,6 +49,7 @@ static int azureus_dht_add_node(struct azureus_dht *ad,
 static bool azureus_dht_contains_new_node(struct azureus_dht *ad, 
                                 struct azureus_node *new_node);
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
+static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
 
 struct dht *
 azureus_dht_new(struct dht_net_if *nif, int port)
@@ -59,12 +58,15 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     struct sockaddr_storage ss;
     struct hostent *he = NULL;
     struct azureus_node *bootstrap = NULL;
+    int i;
     int ret;
 
     ad = (struct azureus_dht *) malloc(sizeof(struct azureus_dht));
     if (!ad) {
         return NULL;
     }
+
+    bzero(ad, sizeof(struct azureus_dht));
 
     /* initialize parent base class */
     ret = dht_new(&ad->dht, DHT_TYPE_AZUREUS, nif, port);
@@ -73,17 +75,19 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
+    /* initialize the kbuckets */
+    for (i = 0; i < 160; i++) {
+        LIST_INIT(&ad->kbucket[i].node_list);
+    }
+
+    /* initialize the new node list */
+    TAILQ_INIT(&ad->new_node_list);
+
     /* initialize the task list */
     TAILQ_INIT(&ad->task_list);
 
     /* initialize the database */
     TAILQ_INIT(&ad->db_list);
-
-    /* initialize the node list */
-    TAILQ_INIT(&ad->node_list);
-
-    /* initialize the new node list */
-    TAILQ_INIT(&ad->new_node_list);
 
     /* initialize Azureus specific stuff */
     ad->proto_ver = PROTOCOL_VERSION_MAIN;
@@ -286,10 +290,12 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg
         return FAILURE;
     }
 
-    DEBUG("sending %d bytes to %s/%hu\n", 
+    DEBUG("sent %d bytes to %s/%hu\n", 
             ret,
             inet_ntoa(((struct sockaddr_in *)&msg->pkt.ss)->sin_addr),
             ntohs(((struct sockaddr_in *)&msg->pkt.ss)->sin_port));
+
+    pkt_dump(&msg->pkt);
 
     if (task) {
         task->state = TASK_STATE_WAIT;
@@ -331,35 +337,53 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
 
     ad = azureus_dht_get_ref(dht);
 
-    /* decode the reply */
+    /* decode the rpc msg */
     ret = azureus_rpc_decode(dht, from, fromlen, data, len, &msg);
     if (ret != SUCCESS) {
         return ret;
     }
 
     if (msg->is_req) {  /* REQUEST */
+        an = azureus_node_new(msg->u.udp_req.proto_ver, &msg->pkt.ss);
+        if (!an) {
+            azureus_rpc_msg_delete(msg);
+            return FAILURE;
+        }
+        if (azureus_dht_contains_new_node(ad, an)) {
+            azureus_node_delete(an);
+        } else {
+            TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
+            DEBUG("Added new node %p\n", an);
+        }
+
         /* create a response and send */
+        bzero(&rsp, sizeof(rsp));
+        pkt_reset_data(&rsp.pkt);
+        rsp.pkt.dir = PKT_DIR_TX;
+
         switch (msg->action) {
             case ACT_REQUEST_PING:
-                pkt_reset_data(&rsp.pkt);
                 rsp.action = ACT_REPLY_PING;
-                rsp.pkt.dir = PKT_DIR_TX;
-                ret = azureus_rpc_encode(&rsp);
-                if (ret != SUCCESS) {
-                    return FAILURE;
-                }
-                azureus_rpc_tx(ad, NULL, &rsp);
                 break;
 
             case ACT_REQUEST_FIND_NODE:
-                break;
+                rsp.action = ACT_REPLY_FIND_NODE;
+                /* find k-closest nodes to node-id */
+                /* encode these k-closest nodes */
             case ACT_REQUEST_FIND_VALUE:
-                break;
             case ACT_REQUEST_STORE:
-                break;
             default:
-                break;
+                return FAILURE;
         }
+#if 0
+        ret = azureus_rpc_encode(&rsp);
+        if (ret != SUCCESS) {
+            return FAILURE;
+        }
+
+        azureus_rpc_tx(ad, NULL, &rsp);
+#endif
+        azureus_rpc_msg_delete(msg);
 
     } else {            /* REPLY   */
         /* look for a matching request */
@@ -385,7 +409,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 an = azureus_node_get_ref(task->node);
 
                 memcpy(&an->netpos, &msg->viv_pos[0], 
-                            sizeof(struct azureus_vivaldi_pos));
+                        sizeof(struct azureus_vivaldi_pos));
 
                 rtt = 1.0*(timestamp - task->access_time)/1000000;
                 DEBUG("RTT %f\n", rtt);
@@ -395,8 +419,8 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                         continue;
                     }
                     azureus_vivaldi_v1_update(&ad->this_node->netpos, rtt, 
-                                                &msg->viv_pos[i], 
-                                                msg->viv_pos[i].v.v1.err); 
+                            &msg->viv_pos[i], 
+                            msg->viv_pos[i].v.v1.err); 
                     break;
                 }
 
@@ -413,7 +437,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                     TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
                     if (azureus_dht_contains_new_node(ad, an)) {
                         azureus_node_delete(an);
-                        break;
+                        continue;
                     }
                     TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
                     DEBUG("Added new node %p\n", an);
@@ -428,7 +452,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                     TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
                     if (azureus_dht_contains_new_node(ad, an)) {
                         azureus_node_delete(an);
-                        break;
+                        continue;
                     }
                     TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
                     DEBUG("Added new node %p\n", an);
@@ -639,6 +663,8 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
 
+    azureus_dht_kbucket_stats(ad);
+
     return SUCCESS;
 }
 
@@ -657,7 +683,7 @@ azureus_dht_contains_new_node(struct azureus_dht *ad,
     }
 
     /* is it in the new node list? */
-    TAILQ_FOREACH_SAFE(an, &ad->node_list, next, ann) {
+    TAILQ_FOREACH_SAFE(an, &ad->new_node_list, next, ann) {
         if (key_cmp(&an->node.id, &new_node->node.id) == 0) {
             return TRUE;
         }
@@ -702,4 +728,35 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     }
 
     return SUCCESS;
+}
+
+static void
+azureus_dht_kbucket_stats(struct azureus_dht *ad)
+{
+    int i;
+    struct azureus_node *an = NULL;
+    struct node *node = NULL, *noden = NULL;
+    int total, alive;
+    int bigtotal;
+
+    bigtotal = 0;
+    for (i = 0; i < 160; i++) {
+        total = 0;
+        alive = 0;
+        LIST_FOREACH_SAFE(node, &ad->kbucket[i].node_list, next, noden) {
+            an = azureus_node_get_ref(node);
+            total++;
+            if (an->alive) {
+                alive++;
+            }
+        }
+
+        if (total) {
+            DEBUG("KBUCKET %d total %d alive %d\n", i, total, alive);
+            bigtotal += total;
+        }
+    }
+    DEBUG("KBUCKET bigtotal %d\n", bigtotal);
+
+    return;
 }

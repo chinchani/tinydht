@@ -1,21 +1,19 @@
 /***************************************************************************
- *   Copyright (C) 2007 by Saritha Kalyanam   				   *
- *   kalyanamsaritha@gmail.com                                             *
+ *  Copyright (C) 2007 by Saritha Kalyanam                                 *
+ *  kalyanamsaritha@gmail.com                                              *
  *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
+ *  This program is free software: you can redistribute it and/or modify   *
+ *  it under the terms of the GNU Affero General Public License as         *
+ *  published by the Free Software Foundation, either version 3 of the     *
+ *  License, or (at your option) any later version.                        *
  *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
+ *  This program is distributed in the hope that it will be useful,        *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU Affero General Public License for more details.                    *
  *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.  *
  ***************************************************************************/
 
 #ifndef __AZUREUS_DHT_H__
@@ -38,11 +36,10 @@ struct azureus_dht {
     u32                         est_dht_size;
     struct azureus_node         *this_node;
     struct azureus_node         *bootstrap;
-    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
-    TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
-    TAILQ_HEAD(azureus_node_list_head, azureus_node)            node_list;
-    TAILQ_HEAD(azureus_new_node_list_head, azureus_node)        new_node_list;
     struct kbucket              kbucket[160];
+    TAILQ_HEAD(azureus_new_node_list_head, azureus_node)        new_node_list;
+    TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
+    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
 };
 
 static inline struct azureus_dht *
