@@ -324,7 +324,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
 {
     struct azureus_dht *ad = NULL;
     struct azureus_rpc_msg *msg = NULL, *msg1 = NULL;
-    struct azureus_rpc_msg rsp;
+    struct azureus_rpc_msg *rsp = NULL;
     struct pkt *pkt = NULL;
     struct task *task = NULL;
     struct azureus_node *an = NULL, *ann = NULL;
@@ -357,33 +357,35 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
         }
 
         /* create a response and send */
-        bzero(&rsp, sizeof(rsp));
-        pkt_reset_data(&rsp.pkt);
-        rsp.pkt.dir = PKT_DIR_TX;
+        rsp = azureus_rpc_msg_new(dht, from, fromlen, NULL, 0);
+        rsp->pkt.dir = PKT_DIR_TX;
+        rsp->r.req = msg;
 
         switch (msg->action) {
             case ACT_REQUEST_PING:
-                rsp.action = ACT_REPLY_PING;
+                rsp->action = ACT_REPLY_PING;
                 break;
 
             case ACT_REQUEST_FIND_NODE:
-                rsp.action = ACT_REPLY_FIND_NODE;
+                rsp->action = ACT_REPLY_FIND_NODE;
                 /* find k-closest nodes to node-id */
                 /* encode these k-closest nodes */
             case ACT_REQUEST_FIND_VALUE:
             case ACT_REQUEST_STORE:
             default:
+                azureus_rpc_msg_delete(msg);
+                azureus_rpc_msg_delete(rsp);
                 return FAILURE;
         }
-#if 0
-        ret = azureus_rpc_encode(&rsp);
+
+        ret = azureus_rpc_encode(rsp);
         if (ret != SUCCESS) {
             return FAILURE;
         }
 
-        azureus_rpc_tx(ad, NULL, &rsp);
-#endif
+        azureus_rpc_tx(ad, NULL, rsp);
         azureus_rpc_msg_delete(msg);
+        azureus_rpc_msg_delete(rsp);
 
     } else {            /* REPLY   */
         /* look for a matching request */
