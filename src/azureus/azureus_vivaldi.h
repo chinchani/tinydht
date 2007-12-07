@@ -23,6 +23,11 @@
 
 struct azureus_rpc_msg;
 
+#define MAX_RPC_VIVALDI_POS     2
+
+#define VIVALDI_V1              0
+#define VIVALDI_V2              1
+
 enum azureus_vivaldi_type {
     POSITION_TYPE_NONE = 0,
     POSITION_TYPE_VIVALDI_V1 = 1,
@@ -37,10 +42,16 @@ struct azureus_vivaldi_v1_pos {
 #define E       3
 };
 
+struct azureus_vivaldi_v2_pos {
+    u8          n_coords;
+    double      x, y, h, err;
+};
+
 struct azureus_vivaldi_pos {
     enum azureus_vivaldi_type           type;
     union {
         struct azureus_vivaldi_v1_pos   v1;
+        struct azureus_vivaldi_v2_pos   v2;
     } v;
 };
 
@@ -56,7 +67,7 @@ int azureus_vivaldi_decode(struct pkt *pkt, int type,
 int azureus_vivaldi_encode(struct pkt *pkt, int type, 
                             struct azureus_vivaldi_pos *pos);
 
-void azureus_vivaldi_pos_dump(struct azureus_rpc_msg *msg);
+void azureus_vivaldi_pos_dump(struct azureus_vivaldi_pos *pos);
 
 #endif /* __AZUREUS_VIVALDI_H__ */
 

@@ -60,6 +60,7 @@ int pkt_write_short(struct pkt *pkt, u16 s);
 int pkt_write_int(struct pkt *pkt, u32 i);
 int pkt_write_long(struct pkt *pkt, u64 l);
 int pkt_write_float(struct pkt *pkt, float f);
+int pkt_write_double(struct pkt *pkt, double f);
 int pkt_write_arr(struct pkt *pkt, u8 *arr, size_t arr_len);
 
 int pkt_read_byte(struct pkt *pkt, u8 *b);

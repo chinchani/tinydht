@@ -37,6 +37,8 @@ static const float MAX_H = 30000.0f;
 
 static int azureus_vivaldi_v1_encode(struct pkt *pkt, 
                                         struct azureus_vivaldi_pos *pos);
+static int azureus_vivaldi_v2_encode(struct pkt *pkt, 
+                                        struct azureus_vivaldi_pos *pos);
 static int azureus_vivaldi_v1_decode(struct pkt *pkt, 
                                         struct azureus_vivaldi_pos *pos);
 
@@ -64,6 +66,10 @@ azureus_vivaldi_encode(struct pkt *pkt, int type,
             break;
 
         case POSITION_TYPE_VIVALDI_V2:
+            ret = azureus_vivaldi_v2_encode(pkt, pos);
+            if (ret != SUCCESS) {
+                return ret;
+            }
             break;
             
         default:
@@ -77,9 +83,9 @@ azureus_vivaldi_encode(struct pkt *pkt, int type,
 static int
 azureus_vivaldi_v1_encode(struct pkt *pkt, struct azureus_vivaldi_pos *pos)
 {
+    float f[4];
     int i;
     int ret;
-    float f[4];
 
     ASSERT(pkt && pos);
     ASSERT(pos->type == POSITION_TYPE_VIVALDI_V1);
@@ -91,6 +97,36 @@ azureus_vivaldi_v1_encode(struct pkt *pkt, struct azureus_vivaldi_pos *pos)
 
     for (i = 0; i < 4; i++) {
         ret = pkt_write_float(pkt, f[i]);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    }
+
+    return SUCCESS;
+}
+
+static int
+azureus_vivaldi_v2_encode(struct pkt *pkt, struct azureus_vivaldi_pos *pos)
+{
+    double f[4];
+    int i;
+    int ret;
+
+    ASSERT(pkt && pos);
+    ASSERT(pos->type == POSITION_TYPE_VIVALDI_V2);
+
+    f[X] = pos->v.v2.x;
+    f[Y] = pos->v.v2.y;
+    f[H] = pos->v.v2.h;
+    f[E] = pos->v.v2.err;
+
+    ret = pkt_write_byte(pkt, pos->v.v2.n_coords);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    for (i = 0; i < 4; i++) {
+        ret = pkt_write_double(pkt, f[i]);
         if (ret != SUCCESS) {
             return ret;
         }
@@ -164,14 +200,27 @@ azureus_vivaldi_pos_new(struct azureus_vivaldi_pos *pos, u8 type,
                             float x, float y, float h)
 {
     bzero(pos, sizeof(struct azureus_vivaldi_pos));
-    if (type != POSITION_TYPE_VIVALDI_V1) {
-        return SUCCESS;
+    switch (type) {
+        case POSITION_TYPE_VIVALDI_V1:
+            pos->type = POSITION_TYPE_VIVALDI_V1;
+            pos->v.v1.x = x;
+            pos->v.v1.y = y;
+            pos->v.v1.h = h;
+            pos->v.v1.err = initial_err;
+            break;
+
+        case POSITION_TYPE_VIVALDI_V2:
+            pos->type = POSITION_TYPE_VIVALDI_V2;
+            pos->v.v2.n_coords = 4;
+            pos->v.v2.x = 100.0f;
+            pos->v.v2.y = 100.0f;
+            pos->v.v2.x = 100.0f;
+            pos->v.v2.err = 1.0f;
+            break;
+
+        default:
+            break;
     }
-    pos->type = POSITION_TYPE_VIVALDI_V1;
-    pos->v.v1.x = x;
-    pos->v.v1.y = y;
-    pos->v.v1.h = h;
-    pos->v.v1.err = initial_err;
 
     return SUCCESS;
 }
@@ -358,20 +407,30 @@ retry:
     }
 
     w = pos->v.v1.err/(ej + pos->v.v1.err);
+    DEBUG("w = %f\n", w);
     re = rtt - azureus_vivaldi_v1_distance(pos, cj);
+    DEBUG("re = %f\n", re);
     es = fabs(re)/rtt;
+    DEBUG("es = %f\n", es);
     new_err = es * ce * w + pos->v.v1.err * (1.0f - ce * w);
+    DEBUG("new_err = %f\n", new_err);
 
     delta = cc * w;
+    DEBUG("delta = %f\n", delta);
     scale = delta * re;
+    DEBUG("scale = %f\n", scale);
     f_x = 1.0*random()/RAND_MAX;
     f_y = 1.0*random()/RAND_MAX;
+
+    DEBUG("f_x = %f f_y = %f\n", f_x, f_y);
 
     ret = azureus_vivaldi_pos_new(&rnd_err, POSITION_TYPE_VIVALDI_V1, 
                                     f_x/10, f_y/10, 0.0f);
     if (ret != SUCCESS) {
         return ret;
     }
+
+    azureus_vivaldi_pos_dump(&rnd_err);
 
     /* FIXME: some complex construction */
     azureus_vivaldi_v1_add(cj, &rnd_err, &res_1);
@@ -388,6 +447,7 @@ retry:
                                 0.0f, 0.0f, 0.0f);
         pos->v.v1.err = initial_err;
     }
+    azureus_vivaldi_pos_dump(pos);
 
     if (!azureus_vivaldi_v1_at_origin(cj)) {
         nb_updates++;
@@ -407,29 +467,17 @@ retry:
 }
 
 void
-azureus_vivaldi_pos_dump(struct azureus_rpc_msg *msg)
+azureus_vivaldi_pos_dump(struct azureus_vivaldi_pos *pos)
 {
-    int i;
-    struct azureus_vivaldi_pos *pos = NULL;
-    bool v1_found = FALSE;
+    ASSERT(pos);
 
-    ASSERT(msg);
-
-    for (i = 0; i < msg->n_viv_pos; i++) {
-        pos = &msg->viv_pos[i];
-        if (pos->type == POSITION_TYPE_VIVALDI_V1) {
-            v1_found = TRUE;
-            break;
-        }
+    if (pos->type != POSITION_TYPE_VIVALDI_V1) {
+        return;
     }
 
-    if (v1_found) {
-        DEBUG("%s:%hu type:%d x:%f y:%f h:%f err:%f\n", 
-                inet_ntoa(((struct sockaddr_in *)&msg->pkt.ss)->sin_addr),
-                ntohs(((struct sockaddr_in *)&msg->pkt.ss)->sin_port),
+    DEBUG("type:%d x:%f y:%f h:%f err:%f\n", 
                 pos->type, 
                 pos->v.v1.x, pos->v.v1.y, pos->v.v1.h, pos->v.v1.err);
-    }
 
     return;
 }

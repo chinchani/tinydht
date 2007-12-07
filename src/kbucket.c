@@ -49,6 +49,21 @@ kbucket_insert_node(struct kbucket *k, struct node *n)
     return SUCCESS;
 }
 
+struct node *
+kbucket_delete_node(struct kbucket *k, struct node *n)
+{
+    struct node *tn = NULL, *tnn = NULL;
+
+    LIST_FOREACH_SAFE(tn, &k->node_list, next, tnn) {
+        if (key_cmp(&tn->id, &n->id) == 0) {
+            LIST_REMOVE(tn, next);
+            return tn;
+        }
+    }
+
+    return NULL;
+}
+
 int
 kbucket_contains_node(struct kbucket *k, struct node *n)
 {

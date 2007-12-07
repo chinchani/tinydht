@@ -98,7 +98,6 @@ enum azureus_contact_type {
 };
 
 #define MAX_RPC_MSG_NODES       16
-#define MAX_RPC_VIVALDI_POS     4
 
 /* PR UDP Request 
     connection id    (0x8000000000000000L | rnd) 

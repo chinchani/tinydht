@@ -1636,8 +1636,16 @@ azureus_rpc_vivaldi_encode(struct azureus_rpc_msg *msg)
 
         for (i = 0; i < msg->n_viv_pos; i++) {
 
-            if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
-                v1_found = TRUE;
+            switch (msg->viv_pos[i].type) {
+                case POSITION_TYPE_VIVALDI_V1:
+                    size = 16;
+                    v1_found = TRUE;
+                    break;
+                case POSITION_TYPE_VIVALDI_V2:
+                    size = 33;
+                    break;
+                default:
+                    continue;
             }
 
             ret = pkt_write_byte(&msg->pkt, msg->viv_pos[i].type);
@@ -1645,14 +1653,13 @@ azureus_rpc_vivaldi_encode(struct azureus_rpc_msg *msg)
                 return ret;
             }
 
-            size = 16;
             ret = pkt_write_byte(&msg->pkt, size);
             if (ret != SUCCESS) {
                 return ret;
             }
 
             ret = azureus_vivaldi_encode(&msg->pkt, msg->viv_pos[i].type, 
-                                            &msg->viv_pos[msg->n_viv_pos]);
+                                            &msg->viv_pos[i]);
             if (ret != SUCCESS) {
                 return ret;
             }
@@ -1745,7 +1752,7 @@ azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg)
     for (i = 0; i < msg->n_viv_pos; i++) {
         if (msg->viv_pos[i].type == POSITION_TYPE_VIVALDI_V1) {
             v1_found = TRUE;
-            azureus_vivaldi_pos_dump(msg);
+            azureus_vivaldi_pos_dump(&msg->viv_pos[i]);
         }
     }
 

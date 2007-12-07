@@ -39,7 +39,7 @@ struct azureus_node {
     u8                                  proto_ver;
     u64                                 skew;
     u32                                 rnd_id;         /* anti-spoof */
-    struct azureus_vivaldi_pos          netpos;
+    struct azureus_vivaldi_pos          viv_pos[MAX_RPC_VIVALDI_POS];
     TAILQ_ENTRY(azureus_node)           next;
     bool                                task_pending;
     bool                                alive;

@@ -229,6 +229,24 @@ pkt_write_float(struct pkt *pkt, float f)
 }
 
 int
+pkt_write_double(struct pkt *pkt, double f)
+{
+    int ret;
+
+    ret = pkt_write_check(pkt, sizeof(u32));
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    ret = pkt_write_long(pkt, float_to_ieee754(f));
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    return SUCCESS;
+}
+
+int
 pkt_write_arr(struct pkt *pkt, u8 *arr, size_t arr_len)
 {
     int ret;

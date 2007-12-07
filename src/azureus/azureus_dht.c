@@ -37,6 +37,7 @@ extern int errno;
 #include "tinydht.h"
 #include "queue.h"
 #include "kbucket.h"
+#include "azureus_vivaldi.h"
 
 static int azureus_rpc_tx(struct azureus_dht *ad, struct task *task, 
                             struct azureus_rpc_msg *msg);
@@ -124,9 +125,10 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     }
 
     /* initialize the network position of this node */
-    azureus_vivaldi_pos_new(&ad->this_node->netpos, 
+    azureus_vivaldi_pos_new(&ad->this_node->viv_pos[VIVALDI_V1], 
                             POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
-
+    azureus_vivaldi_pos_new(&ad->this_node->viv_pos[VIVALDI_V2],
+                            POSITION_TYPE_VIVALDI_V2, 100.0f, 100.0f, 100.0f);
 
     /* bootstrap from "dht.aelitis.com:6881" */
     he = gethostbyname(DHT_BOOTSTRAP_HOST);
@@ -223,6 +225,7 @@ azureus_task_schedule(struct dht *dht)
     /* kbucket refresh */
     azureus_dht_kbucket_refresh(ad);
 
+    /* the main task processing loop */
     TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
         if (task->state == TASK_STATE_WAIT) {
             /* was there a timeout? */
@@ -344,11 +347,13 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
     }
 
     if (msg->is_req) {  /* REQUEST */
+
         an = azureus_node_new(msg->u.udp_req.proto_ver, &msg->pkt.ss);
         if (!an) {
             azureus_rpc_msg_delete(msg);
             return FAILURE;
         }
+
         if (azureus_dht_contains_new_node(ad, an)) {
             azureus_node_delete(an);
         } else {
@@ -360,6 +365,12 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
         rsp = azureus_rpc_msg_new(dht, from, fromlen, NULL, 0);
         rsp->pkt.dir = PKT_DIR_TX;
         rsp->r.req = msg;
+
+        rsp->n_viv_pos = MAX_RPC_VIVALDI_POS;
+        memcpy(&rsp->viv_pos[VIVALDI_V1], &ad->this_node->viv_pos[VIVALDI_V1], 
+                        sizeof(struct azureus_vivaldi_pos));
+        memcpy(&rsp->viv_pos[VIVALDI_V2], &ad->this_node->viv_pos[VIVALDI_V2], 
+                        sizeof(struct azureus_vivaldi_pos));
 
         switch (msg->action) {
             case ACT_REQUEST_PING:
@@ -373,7 +384,6 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
             case ACT_REQUEST_FIND_VALUE:
             case ACT_REQUEST_STORE:
             default:
-                azureus_rpc_msg_delete(msg);
                 azureus_rpc_msg_delete(rsp);
                 return FAILURE;
         }
@@ -384,10 +394,10 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
         }
 
         azureus_rpc_tx(ad, NULL, rsp);
-        azureus_rpc_msg_delete(msg);
         azureus_rpc_msg_delete(rsp);
 
     } else {            /* REPLY   */
+
         /* look for a matching request */
         TAILQ_FOREACH(task, &ad->task_list, next) {
             pkt = TAILQ_FIRST(&task->pkt_list);
@@ -409,26 +419,8 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
 
             case ACT_REPLY_PING:
                 an = azureus_node_get_ref(task->node);
-
-                memcpy(&an->netpos, &msg->viv_pos[0], 
-                        sizeof(struct azureus_vivaldi_pos));
-
-                rtt = 1.0*(timestamp - task->access_time)/1000000;
-                DEBUG("RTT %f\n", rtt);
-
-                for (i = 0; i < msg->n_viv_pos; i++) {
-                    if (msg->viv_pos[i].type != POSITION_TYPE_VIVALDI_V1) {
-                        continue;
-                    }
-                    azureus_vivaldi_v1_update(&ad->this_node->netpos, rtt, 
-                            &msg->viv_pos[i], 
-                            msg->viv_pos[i].v.v1.err); 
-                    break;
-                }
-
                 an->alive = TRUE;
                 azureus_dht_add_node(ad, an);
-
                 break;
 
             case ACT_REPLY_FIND_NODE:
@@ -465,8 +457,28 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 break;
         }
 
+        /* update vivaldi position if relevant */
+        rtt = 1.0*(timestamp - task->access_time)/1000;
+        DEBUG("RTT %f\n", rtt);
+
+        for (i = 0; i < msg->n_viv_pos; i++) {
+            if (msg->viv_pos[i].type != POSITION_TYPE_VIVALDI_V1) {
+                continue;
+            }
+            DEBUG("MY NETPOS (before)\n");
+            azureus_vivaldi_pos_dump(&ad->this_node->viv_pos[VIVALDI_V1]);
+            azureus_vivaldi_v1_update(&ad->this_node->viv_pos[VIVALDI_V1], rtt, 
+                    &msg->viv_pos[i], 
+                    msg->viv_pos[i].v.v1.err); 
+            DEBUG("MY NETPOS (after)\n");
+            azureus_vivaldi_pos_dump(&ad->this_node->viv_pos[VIVALDI_V1]);
+            break;
+        }
+
         azureus_task_delete(task);
     }
+
+    azureus_rpc_msg_delete(msg);
 
     return SUCCESS;
 }
@@ -655,6 +667,7 @@ static int
 azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 {
     int index = 0;
+    struct node *n = NULL;
     int ret;
 
     index = kbucket_index(&ad->this_node->node.id, &an->node.id);
@@ -662,6 +675,11 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     key_dump(&ad->this_node->node.id);
     key_dump(&an->node.id);
     DEBUG("index %d\n", index);
+
+    n = kbucket_delete_node(&ad->kbucket[index], &an->node);
+    if (n && (an != azureus_node_get_ref(n))) {
+        azureus_node_delete(azureus_node_get_ref(n));
+    }
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
 
@@ -762,3 +780,15 @@ azureus_dht_kbucket_stats(struct azureus_dht *ad)
 
     return;
 }
+#if 0
+k_closest(struct key *k)
+{
+    struct key dist;
+
+    key_distance(&ad->this_node->id, k, &dist);
+
+    for (i = 0; i < 160; i++) {
+
+    }
+}
+#endif
