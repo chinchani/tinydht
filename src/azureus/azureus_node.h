@@ -28,8 +28,9 @@
 #include "azureus_vivaldi.h"
 
 enum azureus_node_status {
-    AZUREUS_NODE_STATUS_UNKNOWN = 0xffffffff,
-    AZUREUS_NODE_STATUS_ROUTABLE = 0x00000001
+    AZUREUS_NODE_STATUS_BOOTSTRAP = 0x00000000,
+    AZUREUS_NODE_STATUS_ROUTABLE = 0x00000001,
+    AZUREUS_NODE_STATUS_UNKNOWN = 0xffffffff
 };
 
 struct azureus_node {

@@ -158,6 +158,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
+    bootstrap->node_status = AZUREUS_NODE_STATUS_BOOTSTRAP;
     ad->bootstrap = bootstrap;
 
     /* send a PING, but don't expect any response */
@@ -403,7 +404,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
                                                 &list, &n_list);
                 TAILQ_INIT(&rsp->m.find_node_rsp.node_list);
-                LIST_FOREACH_SAFE(tn, &list, next, tnn) {
+                TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
                     an = azureus_node_get_ref(tn);
                     TAILQ_INSERT_TAIL(&rsp->m.find_node_rsp.node_list, 
                                         an, next);
@@ -475,6 +476,10 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                     ad->est_dht_size = msg->m.find_node_rsp.est_dht_size + 1;
                 }
 
+                an = azureus_node_get_ref(task->node);
+                an->alive = TRUE;
+                azureus_dht_add_node(ad, an);
+                an->rnd_id = msg->m.find_node_rsp.rnd_id;
                 break;
 
             case ACT_REPLY_FIND_VALUE:
@@ -770,8 +775,12 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 
         kbucket = &ad->kbucket[i];
 
-        LIST_FOREACH_SAFE(node, &kbucket->node_list, next, noden) {
+        LIST_FOREACH_SAFE(node, &kbucket->node_list, kb_next, noden) {
             an = azureus_node_get_ref(node);
+            if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
+                continue;
+            }
+
             if ((dht_get_current_time() - an->last_ping) 
                     > PING_TIMEOUT) {
                 /* create a ping task */
@@ -802,7 +811,7 @@ azureus_dht_kbucket_stats(struct azureus_dht *ad)
     for (i = 0; i < 160; i++) {
         total = 0;
         alive = 0;
-        LIST_FOREACH_SAFE(node, &ad->kbucket[i].node_list, next, noden) {
+        LIST_FOREACH_SAFE(node, &ad->kbucket[i].node_list, kb_next, noden) {
             an = azureus_node_get_ref(node);
             total++;
             if (an->alive) {
@@ -835,7 +844,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 
     ASSERT(ad && key && k && list && n_list); 
 
-    LIST_INIT(list);
+    TAILQ_INIT(list);
 
     ret = key_distance(&ad->this_node->node.id, key, &dist);
 
@@ -847,16 +856,17 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
         }
 
         if (index > high) {
+            DEBUG("high %d\n", high);
             high = index;
         }
 
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, next, tnn) {
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, kb_next, tnn) {
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
             }
 
-            LIST_INSERT_HEAD(list, tn, next);
+            TAILQ_INSERT_TAIL(list, tn, next);
             count++;
 
             if (count == k) {
@@ -873,13 +883,13 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
             continue;
         }
 
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, next, tnn) {
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, kb_next, tnn) {
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
             }
 
-            LIST_INSERT_HEAD(list, tn, next);
+            TAILQ_INSERT_TAIL(list, tn, next);
             count++;
 
             if (count == k) {

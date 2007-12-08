@@ -32,7 +32,7 @@ struct kbucket {
     LIST_HEAD(kbucket_node_list_head, node) node_list;
 };
 
-LIST_HEAD(kbucket_node_search_list_head, node);
+TAILQ_HEAD(kbucket_node_search_list_head, node);
 
 int kbucket_new(struct kbucket *k);
 

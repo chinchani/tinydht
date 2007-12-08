@@ -25,7 +25,8 @@
 
 struct node {
     struct key                  id;
-    LIST_ENTRY(node)            next;
+    LIST_ENTRY(node)            kb_next;
+    TAILQ_ENTRY(node)           next;
 };
 
 TAILQ_HEAD(node_list, node);

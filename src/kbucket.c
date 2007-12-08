@@ -43,7 +43,7 @@ kbucket_insert_node(struct kbucket *k, struct node *n)
         return SUCCESS;
     }
     
-    LIST_INSERT_HEAD(&k->node_list, n, next);
+    LIST_INSERT_HEAD(&k->node_list, n, kb_next);
     k->node_count++;
 
     return SUCCESS;
@@ -54,9 +54,9 @@ kbucket_delete_node(struct kbucket *k, struct node *n)
 {
     struct node *tn = NULL, *tnn = NULL;
 
-    LIST_FOREACH_SAFE(tn, &k->node_list, next, tnn) {
+    LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
         if (key_cmp(&tn->id, &n->id) == 0) {
-            LIST_REMOVE(tn, next);
+            LIST_REMOVE(tn, kb_next);
             return tn;
         }
     }
@@ -69,7 +69,7 @@ kbucket_contains_node(struct kbucket *k, struct node *n)
 {
     struct node *tn = NULL, *tnn = NULL;
 
-    LIST_FOREACH_SAFE(tn, &k->node_list, next, tnn) {
+    LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
         if (key_cmp(&tn->id, &n->id) == 0) {
             return TRUE;
         }
