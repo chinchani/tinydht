@@ -28,6 +28,8 @@ struct node {
     LIST_ENTRY(node)            next;
 };
 
+TAILQ_HEAD(node_list, node);
+
 int node_new(struct node *n, struct key *id);
 
 #endif /* __NODE_H__ */

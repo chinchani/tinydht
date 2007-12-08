@@ -92,10 +92,11 @@ kbucket_index(struct key *self, struct key *k)
 
     max_index = k->len*8*sizeof(k->data[0]);
 
-    for (index = 0; index < max_index; index++) {
-        if (key_nth_bit(&xor, (max_index - 1) - index) != 0)
+    for (index = (max_index - 1); index >= 0; index--) {
+        if (key_nth_bit(&xor, index) != 0) {
             break;
+        }
     }
 
-    return index;
+    return (max_index - 1) - index;
 }

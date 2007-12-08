@@ -185,36 +185,44 @@ azureus_rpc_decode(struct dht *dht,
     switch (msg->action) {
 
         case ACT_REQUEST_PING:
+            DEBUG("REQUEST_PING\n");
             ret = azureus_rpc_ping_req_decode(msg);
             break;
 
         case ACT_REPLY_PING:
+            DEBUG("REPLY_PING\n");
             ret = azureus_rpc_ping_rsp_decode(msg);
             break;
 
         case ACT_REQUEST_FIND_NODE:
+            DEBUG("REQUEST_FIND_NODE\n");
             ret = azureus_rpc_find_node_req_decode(msg);
             break;
 
         case ACT_REPLY_FIND_NODE:
+            DEBUG("REPLY_FIND_NODE\n");
             TAILQ_INIT(&msg->m.find_node_rsp.node_list);
             ret = azureus_rpc_find_node_rsp_decode(msg);
             break;
 
         case ACT_REQUEST_FIND_VALUE:
+            DEBUG("REQUEST_FIND_VALUE\n");
             TAILQ_INIT(&msg->m.find_value_rsp.node_list);
             ret = azureus_rpc_find_value_req_decode(msg);
             break;
 
         case ACT_REPLY_FIND_VALUE:
+            DEBUG("REPLY_FIND_VALUE\n");
             ret = azureus_rpc_find_value_rsp_decode(msg);
             break;
 
         case ACT_REQUEST_STORE:
+            DEBUG("REQUEST_STORE\n");
             ret = azureus_rpc_store_value_req_decode(msg);
             break;
 
         case ACT_REPLY_STORE:
+            DEBUG("REPLY_STORE\n");
             ret = azureus_rpc_store_value_rsp_decode(msg);
             break;
 
@@ -1013,8 +1021,6 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    TAILQ_INIT(&msg->m.find_node_rsp.node_list);
-
     ret = azureus_rpc_udp_rsp_encode(msg);
     if (ret != SUCCESS) {
         return ret;
@@ -1023,19 +1029,21 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
     ad = azureus_dht_get_ref(msg->pkt.dht);
 
     if (ad->proto_ver >= PROTOCOL_VERSION_ANTI_SPOOF) {
+#if 0
         ret = azureus_node_get_spoof_id(ad->this_node, &rnd_id);
         if (ret != SUCCESS) {
             return ret;
         }
+#endif
 
-        ret = pkt_write_int(&msg->pkt, rnd_id);
+        ret = pkt_write_int(&msg->pkt, ad->this_node->rnd_id);
         if (ret != SUCCESS) {
             return ret;
         }
     }
 
     if (ad->proto_ver >= PROTOCOL_VERSION_XFER_STATUS) {
-        ret = pkt_write_int(&msg->pkt, msg->m.find_node_rsp.node_status);
+        ret = pkt_write_int(&msg->pkt, ad->this_node->node_status);
         if (ret != SUCCESS) {
             return ret;
         }
@@ -1067,19 +1075,8 @@ azureus_rpc_find_node_rsp_encode(struct azureus_rpc_msg *msg)
         }
     }
 
-#if 0
-    for (i = 0; i < msg->m.find_node_rsp.n_nodes; i++) {
-        ret = azureus_pkt_write_node(&msg->pkt, 
-                                        &msg->m.find_node_rsp.nodes[i]);
-        if (ret != SUCCESS) {
-            return ret;
-        }
-    }
-#endif
-
     return SUCCESS;
 }
-
 
 static int
 azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)

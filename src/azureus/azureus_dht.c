@@ -37,7 +37,10 @@ extern int errno;
 #include "tinydht.h"
 #include "queue.h"
 #include "kbucket.h"
+#include "node.h"
 #include "azureus_vivaldi.h"
+
+/*********************** Function Prototypes ***********************/
 
 static int azureus_rpc_tx(struct azureus_dht *ad, struct task *task, 
                             struct azureus_rpc_msg *msg);
@@ -51,6 +54,12 @@ static bool azureus_dht_contains_new_node(struct azureus_dht *ad,
                                 struct azureus_node *new_node);
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
 static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
+static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, 
+                                struct key *key, int k,
+                                struct kbucket_node_search_list_head *list, 
+                                int *n_list);
+
+/*********************** Function Definitions ***********************/
 
 struct dht *
 azureus_dht_new(struct dht_net_if *nif, int port)
@@ -334,6 +343,10 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
     bool found = FALSE;
     float rtt = 0.0;
     int i;
+    struct kbucket_node_search_list_head list;
+    int n_list = 0;
+    struct node *tn = NULL, *tnn = NULL;
+    struct key key;
     int ret;
 
     ASSERT(dht && from && data);
@@ -379,17 +392,36 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
 
             case ACT_REQUEST_FIND_NODE:
                 rsp->action = ACT_REPLY_FIND_NODE;
-                /* find k-closest nodes to node-id */
-                /* encode these k-closest nodes */
+                ret = key_new(&key, KEY_TYPE_SHA1, msg->m.find_node_req.id, 
+                                msg->m.find_node_req.id_len);
+                if (ret != SUCCESS) {
+                    azureus_rpc_msg_delete(rsp);
+                    azureus_rpc_msg_delete(msg);
+                    return FAILURE;
+                }
+
+                azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
+                                                &list, &n_list);
+                TAILQ_INIT(&rsp->m.find_node_rsp.node_list);
+                LIST_FOREACH_SAFE(tn, &list, next, tnn) {
+                    an = azureus_node_get_ref(tn);
+                    TAILQ_INSERT_TAIL(&rsp->m.find_node_rsp.node_list, 
+                                        an, next);
+                }
+                rsp->m.find_node_rsp.n_nodes = n_list;
+                break;
+
             case ACT_REQUEST_FIND_VALUE:
             case ACT_REQUEST_STORE:
             default:
                 azureus_rpc_msg_delete(rsp);
+                azureus_rpc_msg_delete(msg);
                 return FAILURE;
         }
 
         ret = azureus_rpc_encode(rsp);
         if (ret != SUCCESS) {
+            azureus_rpc_msg_delete(msg);
             return FAILURE;
         }
 
@@ -426,6 +458,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
             case ACT_REPLY_FIND_NODE:
                 /* if the reply contained new nodes, 
                  * add them to the new node list */
+                DEBUG("number of nodes %d\n", msg->m.find_node_rsp.n_nodes);
                 TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
                                                                     next, ann) {
                     TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
@@ -436,6 +469,12 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                     TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
                     DEBUG("Added new node %p\n", an);
                 }
+
+                /* FIXME: fix this later! */
+                if (ad->est_dht_size < msg->m.find_node_rsp.est_dht_size) {
+                    ad->est_dht_size = msg->m.find_node_rsp.est_dht_size + 1;
+                }
+
                 break;
 
             case ACT_REPLY_FIND_VALUE:
@@ -734,13 +773,13 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
         LIST_FOREACH_SAFE(node, &kbucket->node_list, next, noden) {
             an = azureus_node_get_ref(node);
             if ((dht_get_current_time() - an->last_ping) 
-                    > MAX_PING_TIMEOUT) {
+                    > PING_TIMEOUT) {
                 /* create a ping task */
                 azureus_dht_add_ping_task(ad, an);
             }
 
             if (an->alive && ((dht_get_current_time() - an->last_find_node) 
-                    > MAX_FIND_NODE_TIMEOUT)) {
+                    > FIND_NODE_TIMEOUT)) {
                 /* create a find_node task */
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }
@@ -780,15 +819,75 @@ azureus_dht_kbucket_stats(struct azureus_dht *ad)
 
     return;
 }
-#if 0
-k_closest(struct key *k)
+
+static int
+azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
+                                struct kbucket_node_search_list_head *list, 
+                                int *n_list)
 {
     struct key dist;
+    int index, max_index;
+    int count = 0;
+    int ret;
+    int high = 0;
+    struct node *tn = NULL, *tnn = NULL;
+    struct azureus_node *an = NULL;
 
-    key_distance(&ad->this_node->id, k, &dist);
+    ASSERT(ad && key && k && list && n_list); 
 
-    for (i = 0; i < 160; i++) {
+    LIST_INIT(list);
 
+    ret = key_distance(&ad->this_node->node.id, key, &dist);
+
+    max_index = key->len*8*sizeof(key->data[0]);
+
+    for (index = (max_index - 1); (index >= 0) && (count < k); index--) {
+        if (key_nth_bit(&dist, index) != 1) {
+            continue;
+        }
+
+        if (index > high) {
+            high = index;
+        }
+
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, next, tnn) {
+            an = azureus_node_get_ref(tn);
+            if (!an->alive) {
+                continue;
+            }
+
+            LIST_INSERT_HEAD(list, tn, next);
+            count++;
+
+            if (count == k) {
+                *n_list = count;
+                return SUCCESS;
+            }
+        }
     }
+
+    /* we walk backwards now */
+    for (index = 0; (index < max_index) && (count < k) 
+                            && (index > high); index++) {
+        if (key_nth_bit(&dist, index) != 0) {
+            continue;
+        }
+
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, next, tnn) {
+            an = azureus_node_get_ref(tn);
+            if (!an->alive) {
+                continue;
+            }
+
+            LIST_INSERT_HEAD(list, tn, next);
+            count++;
+
+            if (count == k) {
+                *n_list = count;
+                return SUCCESS;
+            }
+        }
+    }
+
+    return SUCCESS;
 }
-#endif

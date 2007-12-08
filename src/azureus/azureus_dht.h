@@ -56,8 +56,9 @@ azureus_dht_get_ref(struct dht *dht)
 
 #define MAX_RPC_RETRIES         0
 
-#define MAX_PING_TIMEOUT        60*1000*1000
-#define MAX_FIND_NODE_TIMEOUT   60*1000*1000
+#define PING_TIMEOUT            15*60*1000*1000         /* 15 minutes */
+#define FIND_NODE_TIMEOUT       PING_TIMEOUT
+#define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
 
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
