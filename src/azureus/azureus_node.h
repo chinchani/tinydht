@@ -46,6 +46,7 @@ struct azureus_node {
     bool                                alive;
     u64                                 last_ping;
     u64                                 last_find_node;
+    int                                 failures;
 };
 
 struct azureus_node_serialized {

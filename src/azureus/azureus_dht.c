@@ -50,6 +50,8 @@ static int azureus_dht_add_find_node_task(struct azureus_dht *ad,
                             struct azureus_node *an, struct key *node_id);
 static int azureus_dht_add_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
+static int azureus_dht_delete_node(struct azureus_dht *ad, 
+                            struct azureus_node *an);
 static bool azureus_dht_contains_new_node(struct azureus_dht *ad, 
                                 struct azureus_node *new_node);
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
@@ -248,8 +250,12 @@ azureus_task_schedule(struct dht *dht)
             if (task->retries == 0) {
                 DEBUG("task timed out\n");
                 an = azureus_node_get_ref(task->node);
-                an->alive = FALSE;
                 azureus_task_delete(task);      
+                an->alive = FALSE;
+                an->failures++;
+                if (an->failures == MAX_RPC_FAILURES) {
+                    azureus_dht_delete_node(ad, an);
+                }
                 continue;
             } else {
                 DEBUG("retrying task\n");
@@ -732,6 +738,29 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     return SUCCESS;
 }
 
+static int
+azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
+{
+    int index = 0;
+    struct node *n = NULL;
+    int ret;
+
+    index = kbucket_index(&ad->this_node->node.id, &an->node.id);
+
+    key_dump(&ad->this_node->node.id);
+    key_dump(&an->node.id);
+    DEBUG("index %d\n", index);
+
+    n = kbucket_delete_node(&ad->kbucket[index], &an->node);
+    if (n) {
+        azureus_node_delete(azureus_node_get_ref(n));
+    }
+
+    azureus_dht_kbucket_stats(ad);
+
+    return SUCCESS;
+}
+
 static bool
 azureus_dht_contains_new_node(struct azureus_dht *ad, 
                                 struct azureus_node *new_node)
@@ -781,8 +810,12 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 continue;
             }
 
-            if ((dht_get_current_time() - an->last_ping) 
-                    > PING_TIMEOUT) {
+            if (!an->alive && (an->failures < MAX_RPC_FAILURES)) {
+                azureus_dht_add_ping_task(ad, an);
+                continue;
+            }
+
+            if ((dht_get_current_time() - an->last_ping) > PING_TIMEOUT) {
                 /* create a ping task */
                 azureus_dht_add_ping_task(ad, an);
             }

@@ -55,6 +55,7 @@ azureus_dht_get_ref(struct dht *dht)
 #define AZUREUS_W               4
 
 #define MAX_RPC_RETRIES         0
+#define MAX_RPC_FAILURES        3
 
 #define PING_TIMEOUT            15*60*1000*1000         /* 15 minutes */
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
