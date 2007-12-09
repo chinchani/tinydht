@@ -363,6 +363,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
     /* decode the rpc msg */
     ret = azureus_rpc_decode(dht, from, fromlen, data, len, &msg);
     if (ret != SUCCESS) {
+        ERROR("dropped bad rpc msg!\n");
         return ret;
     }
 
@@ -454,17 +455,22 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
             return SUCCESS;
         }
 
+        an = azureus_node_get_ref(task->node);
+        an->alive = TRUE;
+        an->failures = 0;
+        azureus_dht_add_node(ad, an);
+
         switch (msg->action) {
 
             case ACT_REPLY_PING:
-                an = azureus_node_get_ref(task->node);
-                an->alive = TRUE;
-                azureus_dht_add_node(ad, an);
                 break;
 
             case ACT_REPLY_FIND_NODE:
                 /* if the reply contained new nodes, 
                  * add them to the new node list */
+
+                an->rnd_id = msg->m.find_node_rsp.rnd_id;
+
                 DEBUG("number of nodes %d\n", msg->m.find_node_rsp.n_nodes);
                 TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
                                                                     next, ann) {
@@ -481,11 +487,6 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 if (ad->est_dht_size < msg->m.find_node_rsp.est_dht_size) {
                     ad->est_dht_size = msg->m.find_node_rsp.est_dht_size + 1;
                 }
-
-                an = azureus_node_get_ref(task->node);
-                an->alive = TRUE;
-                azureus_dht_add_node(ad, an);
-                an->rnd_id = msg->m.find_node_rsp.rnd_id;
                 break;
 
             case ACT_REPLY_FIND_VALUE:
@@ -504,8 +505,11 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 break;
 
             default:
-                break;
+                ERROR("dropped msg with unknown action!\n");
+                azureus_rpc_msg_delete(msg);
+                return SUCCESS;
         }
+
 
         /* update vivaldi position if relevant */
         rtt = 1.0*(timestamp - task->access_time)/1000;
@@ -889,8 +893,8 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
         }
 
         if (index > high) {
-            DEBUG("high %d\n", high);
             high = index;
+            DEBUG("high %d\n", high);
         }
 
         LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, kb_next, tnn) {
