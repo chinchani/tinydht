@@ -99,9 +99,5 @@ kbucket_index(struct key *self, struct key *k)
         }
     }
 
-    if (index < 0) {
-        index = 0;
-    }
-
     return (max_index - 1) - index;
 }

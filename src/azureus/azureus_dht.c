@@ -135,6 +135,9 @@ azureus_dht_new(struct dht_net_if *nif, int port)
         return NULL;
     }
 
+    DEBUG("this_node\n");
+    key_dump(&ad->this_node->node.id);
+
     /* initialize the network position of this node */
     azureus_vivaldi_pos_new(&ad->this_node->viv_pos[VIVALDI_V1], 
                             POSITION_TYPE_VIVALDI_V1, 0.0f, 0.0f, 0.0f);
@@ -738,6 +741,13 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     struct node *n = NULL;
     int ret;
 
+    ASSERT(ad && an);
+
+    /* ignore, if the added node is me! */
+    if (key_cmp(&ad->this_node->node.id, &an->node.id) == 0) {
+        return SUCCESS;
+    }
+
     index = kbucket_index(&ad->this_node->node.id, &an->node.id);
     ASSERT(index < 160);
 
@@ -788,6 +798,12 @@ azureus_dht_contains_new_node(struct azureus_dht *ad,
     struct azureus_node *an = NULL, *ann = NULL;
     struct task *task = NULL, *taskn = NULL;
     int index;
+
+    ASSERT(ad && new_node);
+
+    if (key_cmp(&ad->this_node->node.id, &new_node->node.id) == 0) {
+        return TRUE;
+    }
 
     /* is it in any kbucket? */
     index = kbucket_index(&ad->this_node->node.id, &new_node->node.id);
