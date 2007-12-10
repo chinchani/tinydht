@@ -55,8 +55,6 @@ struct azureus_dht {
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
 #define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
 
-#define MIN_NODE_COUNT          200
-
 static inline struct azureus_dht *
 azureus_dht_get_ref(struct dht *dht)
 {

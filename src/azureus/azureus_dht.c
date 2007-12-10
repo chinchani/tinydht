@@ -872,9 +872,8 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }
 
-            if (an->alive && (((curr_time - kbucket->last_refresh) 
-                                                > KBUCKET_REFRESH_TIMEOUT) ||
-                        azureus_dht_node_count(ad) < MIN_NODE_COUNT)) {
+            if (an->alive && ((curr_time - kbucket->last_refresh) 
+                                                > KBUCKET_REFRESH_TIMEOUT)) {
                 /* create a find_node task for random id */
                 DEBUG("find node rnd_id - index %d\n", index);
                 key_new(&rnd_id, KEY_TYPE_RANDOM, NULL, 0);
