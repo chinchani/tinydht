@@ -91,11 +91,16 @@ kbucket_index(struct key *self, struct key *k)
     ret = key_distance(self, k, &xor);
 
     max_index = k->len*8*sizeof(k->data[0]);
+    ASSERT(max_index == 160);
 
     for (index = (max_index - 1); index >= 0; index--) {
         if (key_nth_bit(&xor, index) != 0) {
             break;
         }
+    }
+
+    if (index < 0) {
+        index = 0;
     }
 
     return (max_index - 1) - index;

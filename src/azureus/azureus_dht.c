@@ -221,9 +221,12 @@ azureus_task_schedule(struct dht *dht)
     struct pkt *pkt = NULL;
     struct task *task = NULL, *taskn = NULL;
     struct azureus_node *an = NULL, *ann = NULL;
+    u64 curr_time = 0;
     int ret;
 
     ASSERT(dht);
+
+    curr_time = dht_get_current_time();
 
     ad = azureus_dht_get_ref(dht);
 
@@ -241,8 +244,7 @@ azureus_task_schedule(struct dht *dht)
     TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
         if (task->state == TASK_STATE_WAIT) {
             /* was there a timeout? */
-            if ((dht_get_current_time() - task->access_time) 
-                                            < AZUREUS_RPC_TIMEOUT) {
+            if ((curr_time - task->access_time) < AZUREUS_RPC_TIMEOUT) {
                 /* this task hasn't timed out yet, so wait some more! */
                 continue;
             }
@@ -298,16 +300,20 @@ static int
 azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL;
+    int index = 0;
+    u64 curr_time = 0;
     int ret;
 
     ASSERT(ad && msg);
 
     ret = sendto(ad->dht.net_if.sock, msg->pkt.data, msg->pkt.len, 0, 
-                (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
+            (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
     if (ret < 0) {
         ERROR("sendto() - %s\n", strerror(errno));
         return FAILURE;
     }
+
+    curr_time = dht_get_current_time();
 
     DEBUG("sent %d bytes to %s/%hu\n", 
             ret,
@@ -316,22 +322,30 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg
 
     pkt_dump(&msg->pkt);
 
-    if (task) {
-        task->state = TASK_STATE_WAIT;
-        task->access_time = dht_get_current_time();
+    if (!task) {
+        return SUCCESS;
+    }
 
-        an = azureus_node_get_ref(task->node);
+    task->state = TASK_STATE_WAIT;
+    task->access_time = curr_time;
 
-        switch (msg->action) {
-            case ACT_REQUEST_PING:
-                an->last_ping = dht_get_current_time();
-                break;
-            case ACT_REQUEST_FIND_NODE:
-                an->last_find_node = dht_get_current_time();
-                break;
-            default:
-                break;
-        }
+    an = azureus_node_get_ref(task->node);
+    ASSERT(an);
+
+    index = kbucket_index(&ad->this_node->node.id, &an->node.id);
+    ASSERT(index < 160);
+
+    ad->kbucket[index].last_refresh = curr_time;
+
+    switch (msg->action) {
+        case ACT_REQUEST_PING:
+            an->last_ping = curr_time;
+            break;
+        case ACT_REQUEST_FIND_NODE:
+            an->last_find_node = curr_time;
+            break;
+        default:
+            break;
     }
 
     return SUCCESS;
@@ -725,6 +739,7 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     int ret;
 
     index = kbucket_index(&ad->this_node->node.id, &an->node.id);
+    ASSERT(index < 160);
 
     key_dump(&ad->this_node->node.id);
     key_dump(&an->node.id);
@@ -750,6 +765,7 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     int ret;
 
     index = kbucket_index(&ad->this_node->node.id, &an->node.id);
+    ASSERT(index < 160);
 
     key_dump(&ad->this_node->node.id);
     key_dump(&an->node.id);
@@ -775,6 +791,8 @@ azureus_dht_contains_new_node(struct azureus_dht *ad,
 
     /* is it in any kbucket? */
     index = kbucket_index(&ad->this_node->node.id, &new_node->node.id);
+    DEBUG("index %d\n", index);
+    ASSERT(index < 160);
     if (kbucket_contains_node(&ad->kbucket[index], &new_node->node)) {
         return TRUE;
     }
@@ -802,11 +820,18 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     struct kbucket *kbucket = NULL;
     struct node *node = NULL, *noden = NULL;
     struct azureus_node *an = NULL;
-    int i;
+    u64 curr_time = 0;
+    int index, max_index;
+    struct key rnd_id;
 
-    for (i = 0; i < 160; i++) {
+    curr_time = dht_get_current_time();
 
-        kbucket = &ad->kbucket[i];
+    max_index = (ad->this_node->node.id.len)*8
+                        *sizeof(ad->this_node->node.id.data[0]);
+
+    for (index = 0; index < max_index; index++) {
+
+        kbucket = &ad->kbucket[index];
 
         LIST_FOREACH_SAFE(node, &kbucket->node_list, kb_next, noden) {
             an = azureus_node_get_ref(node);
@@ -819,15 +844,23 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 continue;
             }
 
-            if ((dht_get_current_time() - an->last_ping) > PING_TIMEOUT) {
+            if ((curr_time - an->last_ping) > PING_TIMEOUT) {
                 /* create a ping task */
                 azureus_dht_add_ping_task(ad, an);
             }
 
-            if (an->alive && ((dht_get_current_time() - an->last_find_node) 
-                    > FIND_NODE_TIMEOUT)) {
+            if (an->alive && ((curr_time - an->last_find_node) 
+                                                > FIND_NODE_TIMEOUT)) {
                 /* create a find_node task */
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
+            }
+
+            if (an->alive && ((curr_time - kbucket->last_refresh) 
+                                                > KBUCKET_REFRESH_TIMEOUT)) {
+                /* create a find_node task for random id */
+                DEBUG("find node rnd_id - index %d\n", index);
+                key_new(&rnd_id, KEY_TYPE_RANDOM, NULL, 0);
+                azureus_dht_add_find_node_task(ad, an, &rnd_id);
             }
         }
     }
