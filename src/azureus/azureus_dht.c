@@ -60,6 +60,7 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 struct key *key, int k,
                                 struct kbucket_node_search_list_head *list, 
                                 int *n_list);
+static int azureus_dht_node_count(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -871,8 +872,9 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }
 
-            if (an->alive && ((curr_time - kbucket->last_refresh) 
-                                                > KBUCKET_REFRESH_TIMEOUT)) {
+            if (an->alive && (((curr_time - kbucket->last_refresh) 
+                                                > KBUCKET_REFRESH_TIMEOUT) ||
+                        azureus_dht_node_count(ad) < MIN_NODE_COUNT)) {
                 /* create a find_node task for random id */
                 DEBUG("find node rnd_id - index %d\n", index);
                 key_new(&rnd_id, KEY_TYPE_RANDOM, NULL, 0);
@@ -986,4 +988,20 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     }
 
     return SUCCESS;
+}
+
+static int
+azureus_dht_node_count(struct azureus_dht *ad)
+{
+    int index = 0;
+    int count = 0;
+
+    ASSERT(ad);
+
+    for (index = 0; index < 160; index++) {
+        count += ad->kbucket[index].n_nodes;
+
+    }
+
+    return count;
 }

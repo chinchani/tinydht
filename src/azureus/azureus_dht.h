@@ -42,12 +42,6 @@ struct azureus_dht {
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
 };
 
-static inline struct azureus_dht *
-azureus_dht_get_ref(struct dht *dht)
-{
-    return container_of(dht, struct azureus_dht, dht);
-}
-
 #define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
 #define DHT_BOOTSTRAP_PORT      6881
 
@@ -60,6 +54,14 @@ azureus_dht_get_ref(struct dht *dht)
 #define PING_TIMEOUT            15*60*1000*1000         /* 15 minutes */
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
 #define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
+
+#define MIN_NODE_COUNT          200
+
+static inline struct azureus_dht *
+azureus_dht_get_ref(struct dht *dht)
+{
+    return container_of(dht, struct azureus_dht, dht);
+}
 
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);

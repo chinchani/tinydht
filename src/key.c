@@ -30,7 +30,7 @@ key_new(struct key *k, enum key_type type, void *data, int data_len)
     u_int8_t buf[256];
     int ret = 0;
 
-    ASSERT(k && data);
+    ASSERT(k);
     
     bzero(k, sizeof(struct key));
 
