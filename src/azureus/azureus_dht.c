@@ -60,8 +60,9 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 struct key *key, int k,
                                 struct kbucket_node_search_list_head *list, 
                                 int *n_list);
-static int azureus_dht_node_count(struct azureus_dht *ad);
+static int azureus_dht_get_node_count(struct azureus_dht *ad);
 static int azureus_dht_db_refresh(struct azureus_dht *ad);
+static bool azureus_dht_is_stable(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -995,7 +996,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 }
 
 static int
-azureus_dht_node_count(struct azureus_dht *ad)
+azureus_dht_get_node_count(struct azureus_dht *ad)
 {
     int index = 0;
     int count = 0;
@@ -1015,5 +1016,46 @@ azureus_dht_db_refresh(struct azureus_dht *ad)
 {
     ASSERT(ad);
 
+    if (!azureus_dht_is_stable(ad)) {
+        return FAILURE;
+    }
+
     return SUCCESS;
+}
+
+static bool
+azureus_dht_is_stable(struct azureus_dht *ad)
+{
+    static u64 prev_time = 0;
+    u64 curr_time = 0;
+    static int prev_count = 0;
+    int curr_count = 0;
+
+    ASSERT(ad);
+
+    /* first, find out if the DHT's routing table is stable */
+    curr_time = dht_get_current_time();
+
+    if ((curr_time - prev_time) < DHT_STABLE_TEST_WINDOW) {
+        return FALSE;
+    }
+
+    /* if here, we have a one second sample */
+
+    prev_time = curr_time;
+
+    curr_count = azureus_dht_get_node_count(ad);
+    if (!curr_count) {
+        prev_count = 0;
+        return FALSE;
+    }
+
+    if ((curr_count - prev_count) != 0) {
+        prev_count = curr_count;
+        return FALSE;
+    }
+
+    DEBUG("stable count %d\n", prev_count);
+
+    return TRUE;
 }

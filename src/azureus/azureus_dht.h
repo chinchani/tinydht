@@ -48,12 +48,18 @@ struct azureus_dht {
 #define AZUREUS_K               20      /* minimum no. of nodes in a kbucket */
 #define AZUREUS_W               4
 
+#define AZUREUS_RPC_TIMEOUT     ((u64)20*1000*1000)
+/* 20 seconds */
+
 #define MAX_RPC_RETRIES         0
 #define MAX_RPC_FAILURES        3
 
-#define PING_TIMEOUT            15*60*1000*1000         /* 15 minutes */
+#define PING_TIMEOUT            ((u64)15*60*1000*1000)          
+/* 15 minutes */
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
 #define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
+
+#define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
 
 static inline struct azureus_dht *
 azureus_dht_get_ref(struct dht *dht)
