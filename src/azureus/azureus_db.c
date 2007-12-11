@@ -174,7 +174,7 @@ azureus_db_item_delete(struct azureus_db_item *item)
         azureus_db_val_delete(v);
     }
 
-    TAILQ_REMOVE(&item->dht->db_list, item, next);
+    TAILQ_REMOVE(&item->dht->db_list, item, db_next);
     free(item);
 
     return;

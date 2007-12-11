@@ -49,10 +49,10 @@ struct azureus_db_valset {
 struct azureus_db_item {
     struct azureus_dht                  *dht;
     u64                                 cr_time;        /* creation time */
-    u64                                 pub_time;       /* last publish time */
+    u64                                 last_refresh;   /* last publish time */
     struct azureus_db_key               key;
     struct azureus_db_valset            valset;
-    TAILQ_ENTRY(azureus_db_item)        next;
+    TAILQ_ENTRY(azureus_db_item)        db_next;
 };
 
 struct azureus_db_key * azureus_db_key_new(u8 *data, int len);

@@ -61,6 +61,7 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 struct kbucket_node_search_list_head *list, 
                                 int *n_list);
 static int azureus_dht_node_count(struct azureus_dht *ad);
+static int azureus_dht_db_refresh(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -200,7 +201,9 @@ azureus_task_delete(struct task *task)
     ASSERT(task);
 
     ad = azureus_dht_get_ref(task->dht);
+    ASSERT(ad);
     an = azureus_node_get_ref(task->node);
+    ASSERT(an);
 
     TAILQ_REMOVE(&ad->task_list, task, next);
     DEBUG("Deleted task %p\n", task);
@@ -244,6 +247,9 @@ azureus_task_schedule(struct dht *dht)
     /* kbucket refresh */
     azureus_dht_kbucket_refresh(ad);
 
+    /* database refresh */
+    azureus_dht_db_refresh(ad);
+
     /* the main task processing loop */
     TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
         if (task->state == TASK_STATE_WAIT) {
@@ -256,6 +262,7 @@ azureus_task_schedule(struct dht *dht)
             if (task->retries == 0) {
                 DEBUG("task timed out\n");
                 an = azureus_node_get_ref(task->node);
+                ASSERT(an);
                 azureus_task_delete(task);      
                 an->alive = FALSE;
                 an->failures++;
@@ -304,7 +311,6 @@ static int
 azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL;
-    int index = 0;
     u64 curr_time = 0;
     int ret;
 
@@ -335,11 +341,6 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg
 
     an = azureus_node_get_ref(task->node);
     ASSERT(an);
-
-    index = kbucket_index(&ad->this_node->node.id, &an->node.id);
-    ASSERT(index < 160);
-
-    ad->kbucket[index].last_refresh = curr_time;
 
     switch (msg->action) {
         case ACT_REQUEST_PING:
@@ -474,6 +475,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
         }
 
         an = azureus_node_get_ref(task->node);
+        ASSERT(an);
         an->alive = TRUE;
         an->failures = 0;
         azureus_dht_add_node(ad, an);
@@ -580,7 +582,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
     ad = azureus_dht_get_ref(dht);
 
     /* delete a duplicate! */
-    TAILQ_FOREACH_SAFE(item, &ad->db_list, next, itemn) {
+    TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
         if (azureus_db_item_match_key(item, msg->req.key, msg->req.key_len)) {
             DEBUG("key already exists - deleting item\n");
             azureus_db_item_delete(item);
@@ -595,7 +597,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 
     ret = azureus_db_item_set_key(item, msg->req.key, msg->req.key_len);
     if (ret != SUCCESS) {
-        free(item);
+        azureus_db_item_delete(item);
         return ret;
     }
 
@@ -614,7 +616,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 
     ASSERT(off == msg->req.val_len);
 
-    TAILQ_INSERT_TAIL(&ad->db_list, item, next);
+    TAILQ_INSERT_TAIL(&ad->db_list, item, db_next);
 
     DEBUG("PUT successful\n");
 
@@ -641,7 +643,7 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 
     ad = azureus_dht_get_ref(dht);
 
-    TAILQ_FOREACH(item, &ad->db_list, next) {
+    TAILQ_FOREACH(item, &ad->db_list, db_next) {
         if (azureus_db_item_match_key(item, msg->req.key, msg->req.key_len)) {
             off = 0;
             TAILQ_FOREACH(v, &item->valset.val_list, next) {
@@ -841,6 +843,8 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     int index, max_index;
     struct key rnd_id;
 
+    ASSERT(ad);
+
     curr_time = dht_get_current_time();
 
     max_index = (ad->this_node->node.id.len)*8
@@ -878,6 +882,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 DEBUG("find node rnd_id - index %d\n", index);
                 key_new(&rnd_id, KEY_TYPE_RANDOM, NULL, 0);
                 azureus_dht_add_find_node_task(ad, an, &rnd_id);
+                kbucket->last_refresh = curr_time;
             }
         }
     }
@@ -1003,4 +1008,12 @@ azureus_dht_node_count(struct azureus_dht *ad)
     }
 
     return count;
+}
+
+static int
+azureus_dht_db_refresh(struct azureus_dht *ad)
+{
+    ASSERT(ad);
+
+    return SUCCESS;
 }
