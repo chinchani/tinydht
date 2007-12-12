@@ -1179,7 +1179,7 @@ azureus_rpc_find_value_req_encode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    ret = azureus_rpc_udp_rsp_encode(msg);
+    ret = azureus_rpc_udp_req_encode(msg);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -1221,7 +1221,7 @@ azureus_rpc_find_value_req_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    ret = azureus_rpc_udp_rsp_decode(msg);
+    ret = azureus_rpc_udp_req_decode(msg);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -1242,12 +1242,14 @@ azureus_rpc_find_value_req_decode(struct azureus_rpc_msg *msg)
         return ret;
     }
     msg->m.find_value_req.flags = flags;
+    DEBUG("flags %#x\n", flags);
 
     ret = pkt_read_byte(&msg->pkt, &max_vals);
     if (ret != SUCCESS) {
         return ret;
     }
     msg->m.find_value_req.max_vals = max_vals;
+    DEBUG("max_vals %d\n", max_vals);
     
     ret = azureus_rpc_udp_req_post_decode(msg);
     if (ret != SUCCESS) {
@@ -1423,7 +1425,7 @@ azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
     TAILQ_INIT(&msg->m.store_value_req.key_list);
     TAILQ_INIT(&msg->m.store_value_req.valset_list);
 
-    ret = azureus_rpc_udp_rsp_encode(msg);
+    ret = azureus_rpc_udp_req_encode(msg);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -1483,7 +1485,7 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     TAILQ_INIT(&msg->m.store_value_req.key_list);
     TAILQ_INIT(&msg->m.store_value_req.valset_list);
 
-    ret = azureus_rpc_udp_rsp_decode(msg);
+    ret = azureus_rpc_udp_req_decode(msg);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -1501,6 +1503,8 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     if (ret != SUCCESS) {
         return ret;
     }
+
+    DEBUG("n_keys %d\n", msg->m.store_value_req.n_keys);
 
     for (i = 0; i < msg->m.store_value_req.n_keys; i++) {
         ret = azureus_pkt_read_db_key(&msg->pkt, &key);
@@ -1520,6 +1524,8 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     if (ret != SUCCESS) {
         return ret;
     }
+
+    DEBUG("n_valsets %d\n", msg->m.store_value_req.n_valsets);
 
     for (i = 0; i < msg->m.store_value_req.n_valsets; i++) {
         ret = azureus_pkt_read_db_valset(&msg->pkt, &valset);
