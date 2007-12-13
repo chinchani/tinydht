@@ -1517,6 +1517,8 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
             return FAILURE;
         }
 
+        DEBUG("key len %#x\n", key.len);
+
         TAILQ_INSERT_TAIL(&msg->m.store_value_req.key_list, pkey, next);
     }
 
@@ -1537,6 +1539,8 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
         if (!pvalset) {
             return FAILURE;
         }
+
+        DEBUG("n_vals %#x\n", valset.n_vals);
 
         TAILQ_INSERT_TAIL(&msg->m.store_value_req.valset_list, pvalset, next);
     }

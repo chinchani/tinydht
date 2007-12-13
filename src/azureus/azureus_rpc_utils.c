@@ -325,7 +325,7 @@ azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
 
     ASSERT(pkt && valset);
 
-    ret = pkt_write_byte(pkt, valset->n_vals);
+    ret = pkt_write_short(pkt, valset->n_vals);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -349,7 +349,7 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
 
     ASSERT(pkt && valset);
 
-    ret = pkt_read_byte(pkt, &valset->n_vals);
+    ret = pkt_read_short(pkt, &valset->n_vals);
     if (ret != SUCCESS) {
         return ret;
     }

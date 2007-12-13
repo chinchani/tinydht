@@ -36,6 +36,7 @@ enum azureus_node_status {
 struct azureus_node {
     struct node                         node;
     struct sockaddr_storage             ext_addr;
+    u64                                 cr_time;
     enum azureus_node_status            node_status;
     u8                                  proto_ver;
     u64                                 skew;

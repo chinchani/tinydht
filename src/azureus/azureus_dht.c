@@ -230,8 +230,6 @@ azureus_task_schedule(struct dht *dht)
     struct task *task = NULL, *taskn = NULL;
     struct azureus_node *an = NULL, *ann = NULL;
     u64 curr_time = 0;
-    static int taskq_len = 0;
-    int count = 0;
     int ret;
 
     ASSERT(dht);
@@ -239,15 +237,6 @@ azureus_task_schedule(struct dht *dht)
     curr_time = dht_get_current_time();
 
     ad = azureus_dht_get_ref(dht);
-
-    TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
-        count++;
-    }
-
-    if (count > taskq_len) {
-        taskq_len = count;
-        DEBUG("taskq_len %d\n", taskq_len);
-    }
 
     /* process the new node list */
     TAILQ_FOREACH_SAFE(an, &ad->new_node_list, next, ann) {
