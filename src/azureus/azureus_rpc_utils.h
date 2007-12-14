@@ -35,8 +35,8 @@ int azureus_pkt_write_db_key(struct pkt *pkt, struct azureus_db_key *key);
 int azureus_pkt_read_db_key(struct pkt *pkt, struct azureus_db_key *key);
 
 int azureus_pkt_write_db_valset(struct pkt *pkt, 
-                                struct azureus_db_valset *valset);
+                                struct azureus_db_valset *valset, u8 proto_ver);
 int azureus_pkt_read_db_valset(struct pkt *pkt, 
-                                struct azureus_db_valset *valset);
+                                struct azureus_db_valset *valset, u8 proto_ver);
 
 #endif /* __AZUREUS_RPC_UTILS_H__ */

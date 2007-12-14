@@ -35,15 +35,19 @@ struct azureus_db_key {
 };
 
 struct azureus_db_val {
-    u16                     len;
-    u8                      data[AZUREUS_MAX_VAL_LEN];
+    u32                         ver;
+    u64                         timestamp;
+    u16                         len;
+    u8                          data[AZUREUS_MAX_VAL_LEN];
+    struct azureus_node         orig_node;
+    u8                          flags;
     TAILQ_ENTRY(azureus_db_val) next;
 };
 
 struct azureus_db_valset {
-    u8                      n_vals;
-    TAILQ_HEAD(val_list_head, azureus_db_val)    val_list;
-    TAILQ_ENTRY(azureus_db_valset) next;
+    u16                                         n_vals;
+    TAILQ_HEAD(val_list_head, azureus_db_val)   val_list;
+    TAILQ_ENTRY(azureus_db_valset)              next;
 };
 
 struct azureus_db_item {

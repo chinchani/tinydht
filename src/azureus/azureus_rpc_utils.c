@@ -226,13 +226,6 @@ azureus_pkt_read_node(struct pkt *pkt, struct azureus_node *an)
         return ret;
     }
     memcpy(&an->ext_addr, &ext_addr, sizeof(struct sockaddr_storage));
-#if 0
-
-    n = azureus_node_new(proto_ver, &ext_addr);
-    if (!an) {
-        return FAILURE;
-    }
-#endif
 
     return SUCCESS;
 }
@@ -278,11 +271,29 @@ azureus_pkt_read_db_key(struct pkt *pkt, struct azureus_db_key *key)
 }
 
 int
-azureus_pkt_write_db_val(struct pkt *pkt, struct azureus_db_val *val)
+azureus_pkt_write_db_val(struct pkt *pkt, struct azureus_db_val *val, 
+                            u8 proto_ver)
 {
     int ret;
     
     ASSERT(pkt && val);
+
+    if (proto_ver >= PROTOCOL_VERSION_REMOVE_DIST_ADD_VER) {
+        ret = pkt_write_int(pkt, val->ver);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    } else {
+        ret = pkt_write_int(pkt, 0);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    }
+
+    ret = pkt_write_long(pkt, val->timestamp);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
     ret = pkt_write_short(pkt, val->len);
     if (ret != SUCCESS) {
@@ -294,23 +305,73 @@ azureus_pkt_write_db_val(struct pkt *pkt, struct azureus_db_val *val)
         return ret;
     }
 
+    ret = azureus_pkt_read_node(pkt, &val->orig_node);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    ret = pkt_write_byte(pkt, val->flags);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
     return SUCCESS;
 }
 
 int
-azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val)
+azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val, 
+                        u8 proto_ver)
 {
+    u32 val_ver;
+    u64 timestamp;
+    struct azureus_node azn;
+    u8 flags;
     int ret;
     
     ASSERT(pkt && val);
+
+    ret = pkt_read_int(pkt, &val_ver);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    DEBUG("val_ver %#x\n", val_ver);
+
+    if (proto_ver >= PROTOCOL_VERSION_REMOVE_DIST_ADD_VER) {
+
+    } else {
+        if (val_ver != 0) {
+            ERROR("expected all zeros\n");
+        }
+    }
+
+    ret = pkt_read_long(pkt, &timestamp);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    DEBUG("timestamp %#x\n", timestamp);
 
     ret = pkt_read_short(pkt, &val->len);
     if (ret != SUCCESS) {
         return ret;
     }
 
+    DEBUG("val_len %#x\n", val->len);
+
     ret = pkt_read_arr(pkt, val->data, val->len);
     if (ret != SUCCESS) {
+        return ret;
+    }
+
+    ret = azureus_pkt_read_node(pkt, &azn);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    ret = pkt_read_byte(pkt, &flags);
+    if (ret != SUCCESS) {
+        DEBUG("flags %#x\n", flags);
         return ret;
     }
 
@@ -318,7 +379,8 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val)
 }
 
 int
-azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
+azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset, 
+                            u8 proto_ver)
 {
     struct azureus_db_val *val = NULL;
     int ret;
@@ -331,7 +393,7 @@ azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
     }
 
     TAILQ_FOREACH(val, &valset->val_list, next) {
-        ret = azureus_pkt_write_db_val(pkt, val);
+        ret = azureus_pkt_write_db_val(pkt, val, proto_ver);
         if (ret != SUCCESS) {
             return ret;
         }
@@ -341,7 +403,8 @@ azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
 }
 
 int
-azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
+azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset, 
+                            u8 proto_ver)
 {
     int i;
     struct azureus_db_val val, *pval = NULL;
@@ -354,8 +417,10 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset)
         return ret;
     }
 
+    DEBUG("valset:vals %d\n", valset->n_vals);
+
     for (i = 0; i < valset->n_vals; i++) {
-        ret = azureus_pkt_read_db_val(pkt, &val);
+        ret = azureus_pkt_read_db_val(pkt, &val, proto_ver);
         if (ret != SUCCESS) {
             return ret;
         }

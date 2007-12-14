@@ -420,13 +420,9 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
 
             case ACT_REQUEST_FIND_NODE:
                 rsp->action = ACT_REPLY_FIND_NODE;
+                rsp->m.find_node_rsp.rnd_id = an->rnd_id;
                 ret = key_new(&key, KEY_TYPE_SHA1, msg->m.find_node_req.id, 
                                 msg->m.find_node_req.id_len);
-                if (ret != SUCCESS) {
-                    azureus_rpc_msg_delete(rsp);
-                    azureus_rpc_msg_delete(msg);
-                    return FAILURE;
-                }
 
                 azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
                                                 &list, &n_list);
