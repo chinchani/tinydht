@@ -74,7 +74,7 @@ azureus_db_val_delete(struct azureus_db_val *v)
 }
 
 struct azureus_db_valset *
-azureus_db_valset_new(struct val_list_head *head, int n_vals)
+azureus_db_valset_new(int n_vals, struct val_list_head *head)
 {
     struct azureus_db_valset *vs = NULL;
     struct azureus_db_val *v = NULL;
@@ -89,6 +89,7 @@ azureus_db_valset_new(struct val_list_head *head, int n_vals)
 
     bzero(vs, sizeof(struct azureus_db_valset));
     vs->n_vals = n_vals;
+    TAILQ_INIT(&vs->val_list);
 
     TAILQ_FOREACH(v, head, next) {
         ret = azureus_db_valset_add_val(vs, v->data, v->len);

@@ -350,7 +350,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val,
         return ret;
     }
 
-    DEBUG("timestamp %#x\n", timestamp);
+    DEBUG("timestamp %#0llx\n", timestamp);
 
     ret = pkt_read_short(pkt, &val->len);
     if (ret != SUCCESS) {
@@ -364,10 +364,14 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val,
         return ret;
     }
 
+    DEBUG("reading node\n");
+
     ret = azureus_pkt_read_node(pkt, &azn);
     if (ret != SUCCESS) {
         return ret;
     }
+
+    DEBUG("reading flags\n");
 
     ret = pkt_read_byte(pkt, &flags);
     if (ret != SUCCESS) {
@@ -411,6 +415,8 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset,
     int ret;
 
     ASSERT(pkt && valset);
+
+    TAILQ_INIT(&valset->val_list);
 
     ret = pkt_read_short(pkt, &valset->n_vals);
     if (ret != SUCCESS) {

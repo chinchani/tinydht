@@ -64,8 +64,8 @@ void azureus_db_key_delete(struct azureus_db_key *key);
 
 struct azureus_db_val * azureus_db_val_new(u8 *val, int val_len);
 void azureus_db_val_delete(struct azureus_db_val *v);
-struct azureus_db_valset * azureus_db_valset_new(struct val_list_head *head, 
-                                                    int n_vals);
+struct azureus_db_valset * azureus_db_valset_new(int n_vals, 
+                                                    struct val_list_head *head);
 void azureus_db_valset_delete(struct azureus_db_valset *vs);
 int azureus_db_valset_add_val(struct azureus_db_valset *vs, 
                                 u8 *val, int val_len);

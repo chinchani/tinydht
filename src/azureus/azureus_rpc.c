@@ -1530,7 +1530,7 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
             return ret;
         }
 
-        pvalset = azureus_db_valset_new(&valset.val_list, valset.n_vals);
+        pvalset = azureus_db_valset_new(valset.n_vals, &valset.val_list);
         if (!pvalset) {
             return FAILURE;
         }
