@@ -766,8 +766,6 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
 
-    azureus_dht_kbucket_stats(ad);
-
     return SUCCESS;
 }
 
