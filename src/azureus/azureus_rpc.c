@@ -226,11 +226,23 @@ azureus_rpc_decode(struct dht *dht,
             ret = azureus_rpc_store_value_rsp_decode(msg);
             break;
 
+        case ACT_REPLY_ERROR:
+            DEBUG("REPLY ERROR\n");
+            azureus_rpc_msg_delete(msg);
+            return FAILURE;
+
         default:
+            azureus_rpc_msg_delete(msg);
             return FAILURE;
     }
 
     if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return ret;
+    }
+
+    if (msg->pkt.cursor != msg->pkt.len) {
+        ERROR("unread bytes in pkt!\n");
         azureus_rpc_msg_delete(msg);
         return ret;
     }

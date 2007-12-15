@@ -375,9 +375,10 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val *val,
 
     ret = pkt_read_byte(pkt, &flags);
     if (ret != SUCCESS) {
-        DEBUG("flags %#x\n", flags);
         return ret;
     }
+
+    DEBUG("flags %#x\n", flags);
 
     return SUCCESS;
 }

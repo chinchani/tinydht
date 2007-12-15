@@ -63,6 +63,7 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
 static int azureus_dht_get_node_count(struct azureus_dht *ad);
 static int azureus_dht_db_refresh(struct azureus_dht *ad);
 static bool azureus_dht_is_stable(struct azureus_dht *ad);
+static int azureus_dht_task_count(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -466,7 +467,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
 
         if (!found) {
             /* drop this response! */
-            ERROR("dropped response\n");
+            ERROR("dropped response - no unmatched request\n");
             azureus_rpc_msg_delete(msg);
             return SUCCESS;
         }
@@ -519,6 +520,9 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                     TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
                     DEBUG("Added new node %p\n", an);
                 }
+                break;
+
+            case ACT_REPLY_STORE:
                 break;
 
             default:
@@ -786,8 +790,6 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
         azureus_node_delete(azureus_node_get_ref(n));
     }
 
-    azureus_dht_kbucket_stats(ad);
-
     return SUCCESS;
 }
 
@@ -1052,6 +1054,29 @@ azureus_dht_is_stable(struct azureus_dht *ad)
     }
 
     DEBUG("stable count %d\n", prev_count);
+    azureus_dht_task_count(ad);
+    azureus_dht_kbucket_stats(ad);
 
     return TRUE;
+}
+
+static int
+azureus_dht_task_count(struct azureus_dht *ad)
+{
+    struct task *task = NULL, *taskn = NULL;
+    int count = 0, wt_count = 0;
+
+    ASSERT(ad);
+
+    TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
+        count++;
+        if (task->state == TASK_STATE_WAIT) {
+            wt_count++;
+        }
+    }
+
+    DEBUG("task count %d wait count %d active count %d\n", 
+            count, wt_count, (count - wt_count));
+
+    return SUCCESS;
 }
