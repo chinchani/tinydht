@@ -77,8 +77,8 @@ struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
 int azureus_dht_put(struct dht *dht, struct tinydht_msg *msg);
 int azureus_dht_get(struct dht *dht, struct tinydht_msg *msg);
-int azureus_task_schedule(struct dht *dht);
-int azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
+int azureus_dht_task_schedule(struct dht *dht);
+int azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
                     size_t fromlen, u8 *data, int len, u64 timestamp);
 void azureus_dht_exit(struct dht *dht);
 

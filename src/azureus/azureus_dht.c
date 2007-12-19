@@ -52,8 +52,8 @@ static int azureus_dht_add_node(struct azureus_dht *ad,
                             struct azureus_node *an);
 static int azureus_dht_delete_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
-static bool azureus_dht_contains_new_node(struct azureus_dht *ad, 
-                                struct azureus_node *new_node);
+static bool azureus_dht_contains_node(struct azureus_dht *ad, 
+                                struct azureus_node *an);
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
 static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
 static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, 
@@ -95,9 +95,6 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     for (i = 0; i < 160; i++) {
         LIST_INIT(&ad->kbucket[i].node_list);
     }
-
-    /* initialize the new node list */
-    TAILQ_INIT(&ad->new_node_list);
 
     /* initialize the task list */
     TAILQ_INIT(&ad->task_list);
@@ -171,11 +168,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     bootstrap->node_status = AZUREUS_NODE_STATUS_BOOTSTRAP;
     ad->bootstrap = bootstrap;
 
-    /* send a PING, but don't expect any response */
-    azureus_dht_add_ping_task(ad, bootstrap);
-
-    /* send a FIND_NODE on my own node-id */
-    azureus_dht_add_find_node_task(ad, bootstrap, &ad->this_node->node.id);
+    azureus_dht_add_node(ad, bootstrap);
 
     INFO("Azureus DHT listening on port %hu\n", ntohs(ad->dht.port));
 
@@ -212,6 +205,7 @@ azureus_task_delete(struct task *task)
     DEBUG("Deleted task %p\n", task);
 
     TAILQ_FOREACH_SAFE(pkt, &task->pkt_list, next, pktn) {
+        TAILQ_REMOVE(&task->pkt_list, pkt, next);
         msg = azureus_rpc_msg_get_ref(pkt);
         azureus_rpc_msg_delete(msg);
     }
@@ -224,7 +218,7 @@ azureus_task_delete(struct task *task)
 }
 
 int 
-azureus_task_schedule(struct dht *dht)
+azureus_dht_task_schedule(struct dht *dht)
 {
     struct azureus_dht *ad = NULL;
     struct azureus_rpc_msg *msg = NULL;
@@ -239,13 +233,6 @@ azureus_task_schedule(struct dht *dht)
     curr_time = dht_get_current_time();
 
     ad = azureus_dht_get_ref(dht);
-
-    /* process the new node list */
-    TAILQ_FOREACH_SAFE(an, &ad->new_node_list, next, ann) {
-        DEBUG("remove new node %p\n", an);
-        TAILQ_REMOVE(&ad->new_node_list, an, next);
-        azureus_dht_add_ping_task(ad, an);
-    }
 
     /* kbucket refresh */
     azureus_dht_kbucket_refresh(ad);
@@ -360,8 +347,8 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg
 }
 
 int
-azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
-                    u8 *data, int len, u64 timestamp)
+azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
+                    size_t fromlen, u8 *data, int len, u64 timestamp)
 {
     struct azureus_dht *ad = NULL;
     struct azureus_rpc_msg *msg = NULL, *msg1 = NULL;
@@ -398,10 +385,10 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
             return FAILURE;
         }
 
-        if (azureus_dht_contains_new_node(ad, an)) {
+        if (azureus_dht_contains_node(ad, an)) {
             azureus_node_delete(an);
         } else {
-            TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
+            azureus_dht_add_node(ad, an);
             DEBUG("Added new node %p\n", an);
         }
 
@@ -496,12 +483,11 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
                                                                     next, ann) {
                     TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
-                    if (azureus_dht_contains_new_node(ad, an)) {
+                    if (azureus_dht_contains_node(ad, an)) {
                         azureus_node_delete(an);
                         continue;
                     }
-                    TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
-                    DEBUG("Added new node %p\n", an);
+                    azureus_dht_add_node(ad, an);
                 }
 
                 /* FIXME: fix this later! */
@@ -516,12 +502,11 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
                                                                     next, ann) {
                     TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
-                    if (azureus_dht_contains_new_node(ad, an)) {
+                    if (azureus_dht_contains_node(ad, an)) {
                         azureus_node_delete(an);
                         continue;
                     }
-                    TAILQ_INSERT_TAIL(&ad->new_node_list, an, next);
-                    DEBUG("Added new node %p\n", an);
+                    azureus_dht_add_node(ad, an);
                 }
                 break;
 
@@ -750,6 +735,9 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 
     ASSERT(ad && an);
 
+    DEBUG("azureus_node_count %d\n", azureus_node_count);
+    DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
+
     /* ignore, if the added node is me! */
     if (key_cmp(&ad->this_node->node.id, &an->node.id) == 0) {
         return SUCCESS;
@@ -795,39 +783,25 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
 }
 
 static bool
-azureus_dht_contains_new_node(struct azureus_dht *ad, 
-                                struct azureus_node *new_node)
+azureus_dht_contains_node(struct azureus_dht *ad, 
+                                struct azureus_node *node)
 {
     struct azureus_node *an = NULL, *ann = NULL;
     struct task *task = NULL, *taskn = NULL;
     int index;
 
-    ASSERT(ad && new_node);
+    ASSERT(ad && node);
 
-    if (key_cmp(&ad->this_node->node.id, &new_node->node.id) == 0) {
+    if (key_cmp(&ad->this_node->node.id, &node->node.id) == 0) {
         return TRUE;
     }
 
     /* is it in any kbucket? */
-    index = kbucket_index(&ad->this_node->node.id, &new_node->node.id);
+    index = kbucket_index(&ad->this_node->node.id, &node->node.id);
     DEBUG("index %d\n", index);
     ASSERT(index < 160);
-    if (kbucket_contains_node(&ad->kbucket[index], &new_node->node)) {
+    if (kbucket_contains_node(&ad->kbucket[index], &node->node)) {
         return TRUE;
-    }
-
-    /* is it in the new node list? */
-    TAILQ_FOREACH_SAFE(an, &ad->new_node_list, next, ann) {
-        if (key_cmp(&an->node.id, &new_node->node.id) == 0) {
-            return TRUE;
-        }
-    }
-
-    /* is it in the task list? */
-    TAILQ_FOREACH_SAFE(task, &ad->task_list, next, taskn) {
-        if (key_cmp(&task->node->id, &new_node->node.id) == 0) {
-            return TRUE;
-        }
     }
 
     return FALSE;
@@ -857,7 +831,12 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
         LIST_FOREACH_SAFE(node, &kbucket->node_list, kb_next, noden) {
             an = azureus_node_get_ref(node);
             if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
-                continue;
+                if (azureus_dht_get_node_count(ad) > 1) {
+                    continue;
+                }
+
+                azureus_dht_add_ping_task(ad, an);
+                azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }
 
             if (!an->alive && (an->failures < MAX_RPC_FAILURES)) {
@@ -999,10 +978,15 @@ azureus_dht_get_node_count(struct azureus_dht *ad)
 {
     int index = 0;
     int count = 0;
+    struct azureus_node *an = NULL, *ann = NULL;
+    int max_index;
 
     ASSERT(ad);
 
-    for (index = 0; index < 160; index++) {
+    max_index = (ad->this_node->node.id.len)*8
+                        *sizeof(ad->this_node->node.id.data[0]);
+
+    for (index = 0; index < max_index; index++) {
         count += ad->kbucket[index].n_nodes;
 
     }
@@ -1057,6 +1041,8 @@ azureus_dht_is_stable(struct azureus_dht *ad)
     DEBUG("stable count %d\n", prev_count);
     azureus_dht_task_count(ad);
     azureus_dht_kbucket_stats(ad);
+    DEBUG("azureus_node_count %d\n", azureus_node_count);
+    DEBUG("azureus_rpc_msg_count %d\n", azureus_rpc_msg_count);
 
     return TRUE;
 }

@@ -226,10 +226,12 @@ tinydht_exit(void)
         close(svc_fds[i]);
     }
 
+#if 0
     /* FIXME: shutdown the dht instances */
     for (i = 0; i < n_dhts; i++) {
         dht[i]->exit(&dht[i]);
     }
+#endif
 
     return;
 }

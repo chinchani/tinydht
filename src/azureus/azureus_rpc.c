@@ -100,6 +100,8 @@ err:
 void
 azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 {
+    struct azureus_node *an = NULL, *ann = NULL;
+
     free(msg);
     azureus_rpc_msg_count--;
 }
