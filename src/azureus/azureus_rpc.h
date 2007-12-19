@@ -27,6 +27,8 @@
 #include "azureus_vivaldi.h"
 #include "node.h"
 
+extern int azureus_rpc_msg_count;
+
 enum azureus_protocol_version {
    PROTOCOL_VERSION_2304 = 8,
    PROTOCOL_VERSION_2306 = 12,

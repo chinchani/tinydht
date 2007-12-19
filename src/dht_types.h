@@ -38,6 +38,7 @@ struct dht_prototype {
     int (*rpc_rx)(struct dht *dht, struct sockaddr_storage *from, 
                     size_t fromlen, u8 *data, int len, u64 timestamp);
     int (*task_schedule)(struct dht *dht);
+    void (*exit)(struct dht *dht);
 };
 
 #define MAX_DHT_TYPE    4

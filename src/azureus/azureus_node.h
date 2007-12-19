@@ -27,6 +27,8 @@
 #include "node.h"
 #include "azureus_vivaldi.h"
 
+extern int azureus_node_count;
+
 enum azureus_node_status {
     AZUREUS_NODE_STATUS_BOOTSTRAP = 0x00000000,
     AZUREUS_NODE_STATUS_ROUTABLE = 0x00000001,
@@ -42,12 +44,12 @@ struct azureus_node {
     u64                                 skew;
     u32                                 rnd_id;         /* anti-spoof */
     struct azureus_vivaldi_pos          viv_pos[MAX_RPC_VIVALDI_POS];
-    TAILQ_ENTRY(azureus_node)           next;
     bool                                task_pending;
     bool                                alive;
     u64                                 last_ping;
     u64                                 last_find_node;
     int                                 failures;
+    TAILQ_ENTRY(azureus_node)           next;
 };
 
 struct azureus_node_serialized {

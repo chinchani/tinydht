@@ -48,6 +48,22 @@ azureus_db_key_delete(struct azureus_db_key *key)
     free(key);
 }
 
+bool
+azureus_db_key_match(struct azureus_db_key *k1, struct azureus_db_key *k2)
+{
+    ASSERT(k1 && k2);
+
+    if (k1->len != k2->len) {
+        return FALSE;
+    }
+
+    if (memcmp(k1->data, k2->data, k1->len) != 0) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 struct azureus_db_val *
 azureus_db_val_new(u8 *val, int val_len)
 {

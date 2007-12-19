@@ -164,6 +164,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
 
     bootstrap = azureus_node_new(PROTOCOL_VERSION_MAIN, &ss);
     if (!bootstrap) {
+        azureus_dht_delete(&ad->dht);
         return NULL;
     }
 
@@ -375,6 +376,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
     int n_list = 0;
     struct node *tn = NULL, *tnn = NULL;
     struct key key;
+    struct azureus_db_item *db_item = NULL, *db_itemn = NULL;
     int ret;
 
     ASSERT(dht && from && data);
@@ -437,6 +439,7 @@ azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, size_t fromlen,
                 break;
 
             case ACT_REQUEST_FIND_VALUE:
+                rsp->action = ACT_REPLY_FIND_VALUE;
             case ACT_REQUEST_STORE:
             default:
                 azureus_rpc_msg_delete(rsp);
@@ -1077,4 +1080,21 @@ azureus_dht_task_count(struct azureus_dht *ad)
             count, wt_count, (count - wt_count));
 
     return SUCCESS;
+}
+
+void
+azureus_dht_exit(struct dht *dht)
+{
+    struct azureus_dht *ad = NULL;
+
+    ASSERT(dht);
+
+    ad = azureus_dht_get_ref(dht);
+
+    DEBUG("azureus_node_count %d\n", azureus_node_count);
+    DEBUG("azureus_rpc_msg_count %d\n", azureus_rpc_msg_count);
+    azureus_dht_task_count(ad);
+    azureus_dht_kbucket_stats(ad);
+
+    return;
 }

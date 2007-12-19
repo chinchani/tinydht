@@ -42,6 +42,12 @@ struct azureus_dht {
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
 };
 
+struct azureus_dht_mem_stats {
+    int                         node;
+    int                         msg;
+    int                         task;
+};
+
 #define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
 #define DHT_BOOTSTRAP_PORT      6881
 
@@ -74,5 +80,6 @@ int azureus_dht_get(struct dht *dht, struct tinydht_msg *msg);
 int azureus_task_schedule(struct dht *dht);
 int azureus_rpc_rx(struct dht *dht, struct sockaddr_storage *from, 
                     size_t fromlen, u8 *data, int len, u64 timestamp);
+void azureus_dht_exit(struct dht *dht);
 
 #endif /* __AZUREUS_DHT_H__ */

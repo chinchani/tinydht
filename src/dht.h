@@ -54,6 +54,7 @@ struct dht {
     int (*rpc_rx)(struct dht *dht, struct sockaddr_storage *from, 
                         size_t fromlen, u8 *data, int len, u64 timestamp);
     int (*task_schedule)(struct dht *dht);
+    void (*exit)(struct dht *dht);
 };
 
 int dht_net_if_new(struct dht_net_if *net_if, const char *ifname, 

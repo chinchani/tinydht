@@ -33,6 +33,8 @@
 #include "azureus_vivaldi.h"
 #include "node.h"
 
+int azureus_rpc_msg_count = 0;
+
 static int is_valid_rpc_action(u32 action);
 static int is_valid_rpc_req_action(u32 action);
 static int is_valid_rpc_rsp_action(u32 action);
@@ -80,6 +82,8 @@ azureus_rpc_msg_new(struct dht *dht,
         return NULL;
     }
 
+    azureus_rpc_msg_count++;
+
     bzero(msg, sizeof(struct azureus_rpc_msg));
     ret = pkt_new(&msg->pkt, dht, ss, sslen, data, len);
     if (ret != SUCCESS) {
@@ -89,7 +93,7 @@ azureus_rpc_msg_new(struct dht *dht,
     return msg;
 
 err:
-    free(msg);
+    azureus_rpc_msg_delete(msg);
     return NULL;
 }
 
@@ -97,6 +101,7 @@ void
 azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 {
     free(msg);
+    azureus_rpc_msg_count--;
 }
 
 int

@@ -28,6 +28,7 @@ struct dht_prototype azureus_dht_prototype = {
     put:                azureus_dht_put,
     get:                azureus_dht_get,
     rpc_rx:             azureus_rpc_rx,
-    task_schedule:      azureus_task_schedule
+    task_schedule:      azureus_task_schedule,
+    exit:               azureus_dht_exit
 };
 

@@ -30,6 +30,8 @@
 #include "debug.h"
 #include "crypto.h"
 
+int azureus_node_count = 0;
+
 struct azureus_node *
 azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss)
 {
@@ -44,6 +46,8 @@ azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss)
         return NULL;
     }
 
+    azureus_node_count++;
+
     bzero(an, sizeof(struct azureus_node));
 
     an->proto_ver = proto_ver;
@@ -51,20 +55,21 @@ azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss)
 
     ret = azureus_node_get_id(&k, &an->ext_addr, proto_ver);
     if (ret != SUCCESS) {
+        azureus_node_delete(an);
         return NULL;
     }
 
     /* initialize the base class */
     ret = node_new(&an->node, &k);
     if (ret != SUCCESS) {
-        free(an);
+        azureus_node_delete(an);
         return NULL;
     }
 
     /* FIXME: initialize the spoof-id differently */
     ret = azureus_node_get_spoof_id(an, &an->rnd_id);
     if (ret != SUCCESS) {
-        free(an);
+        azureus_node_delete(an);
         return NULL;
     }
 
@@ -79,6 +84,7 @@ void
 azureus_node_delete(struct azureus_node *n)
 {
     free(n);
+    azureus_node_count--;
 }
 
 int

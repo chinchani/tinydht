@@ -61,6 +61,7 @@ struct azureus_db_item {
 
 struct azureus_db_key * azureus_db_key_new(u8 *data, int len);
 void azureus_db_key_delete(struct azureus_db_key *key);
+bool azureus_db_key_match(struct azureus_db_key *k1, struct azureus_db_key *k2);
 
 struct azureus_db_val * azureus_db_val_new(u8 *val, int val_len);
 void azureus_db_val_delete(struct azureus_db_val *v);

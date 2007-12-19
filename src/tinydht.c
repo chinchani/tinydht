@@ -227,6 +227,9 @@ tinydht_exit(void)
     }
 
     /* FIXME: shutdown the dht instances */
+    for (i = 0; i < n_dhts; i++) {
+        dht[i]->exit(&dht[i]);
+    }
 
     return;
 }
