@@ -169,6 +169,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     ad->bootstrap = bootstrap;
 
     azureus_dht_add_node(ad, bootstrap);
+    DEBUG("Added bootstrap node\n");
 
     INFO("Azureus DHT listening on port %hu\n", ntohs(ad->dht.port));
 
@@ -224,7 +225,7 @@ azureus_dht_task_schedule(struct dht *dht)
     struct azureus_rpc_msg *msg = NULL;
     struct pkt *pkt = NULL;
     struct task *task = NULL, *taskn = NULL;
-    struct azureus_node *an = NULL, *ann = NULL;
+    struct azureus_node *an = NULL;
     u64 curr_time = 0;
     int ret;
 
@@ -427,6 +428,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
             case ACT_REQUEST_FIND_VALUE:
                 rsp->action = ACT_REPLY_FIND_VALUE;
+                /* do we already have this value? */
             case ACT_REQUEST_STORE:
             default:
                 azureus_rpc_msg_delete(rsp);
@@ -457,7 +459,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
         if (!found) {
             /* drop this response! */
-            ERROR("dropped response - no unmatched request\n");
+            ERROR("dropped response - no matching request\n");
             azureus_rpc_msg_delete(msg);
             return SUCCESS;
         }
@@ -735,9 +737,6 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 
     ASSERT(ad && an);
 
-    DEBUG("azureus_node_count %d\n", azureus_node_count);
-    DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
-
     /* ignore, if the added node is me! */
     if (key_cmp(&ad->this_node->node.id, &an->node.id) == 0) {
         return SUCCESS;
@@ -756,6 +755,9 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     }
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
+
+    DEBUG("azureus_node_count %d\n", azureus_node_count);
+    DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
 
     return SUCCESS;
 }
@@ -779,6 +781,9 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
         azureus_node_delete(azureus_node_get_ref(n));
     }
 
+    DEBUG("azureus_node_count %d\n", azureus_node_count);
+    DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
+
     return SUCCESS;
 }
 
@@ -786,12 +791,11 @@ static bool
 azureus_dht_contains_node(struct azureus_dht *ad, 
                                 struct azureus_node *node)
 {
-    struct azureus_node *an = NULL, *ann = NULL;
-    struct task *task = NULL, *taskn = NULL;
     int index;
 
     ASSERT(ad && node);
 
+    /* myself? */
     if (key_cmp(&ad->this_node->node.id, &node->node.id) == 0) {
         return TRUE;
     }
@@ -831,7 +835,8 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
         LIST_FOREACH_SAFE(node, &kbucket->node_list, kb_next, noden) {
             an = azureus_node_get_ref(node);
             if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
-                if (azureus_dht_get_node_count(ad) > 1) {
+                if ((azureus_dht_get_node_count(ad) > 1) 
+                        || an->task_pending) {
                     continue;
                 }
 
@@ -978,7 +983,6 @@ azureus_dht_get_node_count(struct azureus_dht *ad)
 {
     int index = 0;
     int count = 0;
-    struct azureus_node *an = NULL, *ann = NULL;
     int max_index;
 
     ASSERT(ad);

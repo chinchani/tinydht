@@ -74,7 +74,6 @@ azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss)
     }
 
     an->cr_time = dht_get_current_time();
-
     an->node_status = AZUREUS_NODE_STATUS_ROUTABLE;
 
     return an;
