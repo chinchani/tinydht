@@ -102,6 +102,32 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL, *ann = NULL;
 
+    if (msg->pkt.dir != PKT_DIR_RX) {
+        goto out;
+    }
+
+    switch (msg->action) {
+        case ACT_REPLY_FIND_NODE:
+            TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
+                    next, ann) {
+                TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
+                azureus_node_delete(an);
+            }
+            break;
+
+        case ACT_REPLY_FIND_VALUE:
+            TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
+                    next, ann) {
+                TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
+                azureus_node_delete(an);
+            }
+            break;
+
+        default:
+            break;
+    }
+
+out:
     free(msg);
     azureus_rpc_msg_count--;
 }

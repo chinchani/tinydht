@@ -299,7 +299,8 @@ azureus_dht_task_schedule(struct dht *dht)
 }
 
 static int
-azureus_rpc_tx(struct azureus_dht *ad, struct task *task, struct azureus_rpc_msg *msg)
+azureus_rpc_tx(struct azureus_dht *ad, struct task *task, 
+                struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL;
     u64 curr_time = 0;
@@ -374,9 +375,11 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     /* decode the rpc msg */
     ret = azureus_rpc_decode(dht, from, fromlen, data, len, &msg);
     if (ret != SUCCESS) {
-        ERROR("dropped bad rpc msg!\n");
+        ERROR("dropped msg - cannot decode!\n");
         return ret;
     }
+
+    msg->pkt.dir = PKT_DIR_RX;
 
     if (msg->is_req) {  /* REQUEST */
 
@@ -516,7 +519,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 break;
 
             default:
-                ERROR("dropped msg with unknown action!\n");
+                ERROR("dropped msg - unknown action!\n");
                 azureus_rpc_msg_delete(msg);
                 return SUCCESS;
         }
