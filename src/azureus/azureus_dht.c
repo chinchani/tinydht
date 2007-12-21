@@ -751,7 +751,8 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 
     n = kbucket_delete_node(&ad->kbucket[index], &an->node);
     if (n && (an != azureus_node_get_ref(n))) {
-        azureus_node_delete(azureus_node_get_ref(n));
+        azureus_node_delete(an);
+        an = azureus_node_get_ref(n);
     }
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
@@ -777,9 +778,11 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     DEBUG("index %d\n", index);
 
     n = kbucket_delete_node(&ad->kbucket[index], &an->node);
-    if (n) {
+    if (n && (an != azureus_node_get_ref(n))) {
         azureus_node_delete(azureus_node_get_ref(n));
     }
+
+    azureus_node_delete(an);
 
     DEBUG("azureus_node_count %d\n", azureus_node_count);
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
