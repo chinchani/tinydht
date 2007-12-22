@@ -67,7 +67,7 @@ struct azureus_dht_mem_stats {
 
 /* Rate limiting */
 #define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
-#define RATE_LIMIT_BITS_PER_SEC (54*1024)       /* dial-up modem */
+#define RATE_LIMIT_BITS_PER_SEC (1*1024)        /* 1 Kbps */
 
 /*-------------------------------------------------------------
  *

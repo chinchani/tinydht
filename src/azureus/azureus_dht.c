@@ -228,7 +228,7 @@ azureus_dht_task_schedule(struct dht *dht)
     struct task *task = NULL, *taskn = NULL;
     struct azureus_node *an = NULL;
     u64 curr_time = 0;
-    bool skip_new_tasks = FALSE;
+    bool rate_limit_allow = TRUE;
     int ret;
 
     ASSERT(dht);
@@ -269,15 +269,16 @@ azureus_dht_task_schedule(struct dht *dht)
             }
         }
 
-        if (skip_new_tasks) {
+        if (!rate_limit_allow) {
+            /* don't process any more outgoing pkts! */
             continue;
         }
 
         pkt = TAILQ_FIRST(&task->pkt_list);
         msg = azureus_rpc_msg_get_ref(pkt);
 
-        DEBUG("pkt->dir %d\n", pkt->dir);
-        DEBUG("msg->action %d\n", msg->action);
+//        DEBUG("pkt->dir %d\n", pkt->dir);
+//        DEBUG("msg->action %d\n", msg->action);
 
         switch (pkt->dir) {
             case PKT_DIR_RX:
@@ -293,7 +294,7 @@ azureus_dht_task_schedule(struct dht *dht)
                 }
 
                 if (!azureus_dht_rate_limit_allow(task)) {
-                    skip_new_tasks = TRUE;
+                    rate_limit_allow = FALSE;
                     break;
                 }
 
@@ -463,6 +464,11 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
         /* look for a matching request */
         TAILQ_FOREACH(task, &ad->task_list, next) {
+
+            if (task->state != TASK_STATE_WAIT) {
+                continue;
+            }
+
             pkt = TAILQ_FIRST(&task->pkt_list);
             msg1 = azureus_rpc_msg_get_ref(pkt);
             if (azureus_rpc_match_req_rsp(msg1, msg)) {
@@ -1132,7 +1138,7 @@ azureus_dht_rate_limit_allow(struct task *task)
 
     elapsed = (curr_time - prev_time)/1000;
 
-    DEBUG("elapsed %lld size %d len %d\n", elapsed, size, len);
+//    DEBUG("elapsed %lld size %d len %d\n", elapsed, size, len);
 
     if ((elapsed*RATE_LIMIT_BITS_PER_SEC/1000) < (size * 8)) {
         return FALSE;
