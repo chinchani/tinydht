@@ -269,15 +269,15 @@ azureus_dht_task_schedule(struct dht *dht)
             }
         }
 
+        if (skip_new_tasks) {
+            continue;
+        }
+
         pkt = TAILQ_FIRST(&task->pkt_list);
         msg = azureus_rpc_msg_get_ref(pkt);
 
         DEBUG("pkt->dir %d\n", pkt->dir);
         DEBUG("msg->action %d\n", msg->action);
-
-        if (skip_new_tasks) {
-            continue;
-        }
 
         switch (pkt->dir) {
             case PKT_DIR_RX:
