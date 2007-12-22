@@ -65,13 +65,27 @@ struct azureus_dht_mem_stats {
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
 #define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
 
+/* Rate limiting */
 #define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
+#define RATE_LIMIT_BITS_PER_SEC (54*1024)       /* dial-up modem */
+
+/*-------------------------------------------------------------
+ *
+ *      Static functions
+ *
+ *------------------------------------------------------------*/
 
 static inline struct azureus_dht *
 azureus_dht_get_ref(struct dht *dht)
 {
     return container_of(dht, struct azureus_dht, dht);
 }
+
+/*-------------------------------------------------------------
+ *
+ *      Function declarations
+ *
+ *------------------------------------------------------------*/
 
 struct dht * azureus_dht_new(struct dht_net_if *nif, int port);
 void azureus_dht_delete(struct dht *dht);
