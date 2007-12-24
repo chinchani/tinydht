@@ -251,18 +251,23 @@ azureus_pkt_write_db_key(struct pkt *pkt, struct azureus_db_key *key)
 }
 
 int
-azureus_pkt_read_db_key(struct pkt *pkt, struct azureus_db_key *key)
+azureus_pkt_read_db_key(struct pkt *pkt, struct azureus_db_key **key)
 {
     int ret;
     
     ASSERT(pkt && key);
 
-    ret = pkt_read_byte(pkt, &key->len);
+    *key = azureus_db_key_new();
+    if (!(*key)) {
+        return FAILURE;
+    }
+
+    ret = pkt_read_byte(pkt, &(*key)->len);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    ret = pkt_read_arr(pkt, key->data, key->len);
+    ret = pkt_read_arr(pkt, (*key)->data, (*key)->len);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -305,7 +310,7 @@ azureus_pkt_write_db_val(struct pkt *pkt, struct azureus_db_val *val,
         return ret;
     }
 
-    ret = azureus_pkt_read_node(pkt, &val->orig_node);
+    ret = azureus_pkt_write_node(pkt, &val->orig_node);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -397,6 +402,8 @@ azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset,
         return ret;
     }
 
+    DEBUG("valset:vals %d\n", valset->n_vals);
+
     TAILQ_FOREACH(val, &valset->val_list, next) {
         ret = azureus_pkt_write_db_val(pkt, val, proto_ver);
         if (ret != SUCCESS) {
@@ -408,7 +415,7 @@ azureus_pkt_write_db_valset(struct pkt *pkt, struct azureus_db_valset *valset,
 }
 
 int
-azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset, 
+azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset **valset, 
                             u8 proto_ver)
 {
     int i;
@@ -417,16 +424,21 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset,
 
     ASSERT(pkt && valset);
 
-    TAILQ_INIT(&valset->val_list);
+    *valset = azureus_db_valset_new();
+    if (!(*valset)) {
+        return FAILURE;
+    }
 
-    ret = pkt_read_short(pkt, &valset->n_vals);
+    TAILQ_INIT(&(*valset)->val_list);
+
+    ret = pkt_read_short(pkt, &(*valset)->n_vals);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    DEBUG("valset:vals %d\n", valset->n_vals);
+    DEBUG("valset:vals %d\n", (*valset)->n_vals);
 
-    for (i = 0; i < valset->n_vals; i++) {
+    for (i = 0; i < (*valset)->n_vals; i++) {
         ret = azureus_pkt_read_db_val(pkt, &val, proto_ver);
         if (ret != SUCCESS) {
             return ret;
@@ -437,7 +449,7 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset *valset,
             return FAILURE;
         }
 
-        TAILQ_INSERT_TAIL(&valset->val_list, pval, next);
+        TAILQ_INSERT_TAIL(&(*valset)->val_list, pval, next);
     }
 
     return SUCCESS;

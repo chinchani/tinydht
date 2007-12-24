@@ -123,6 +123,9 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
             }
             break;
 
+        case ACT_REPLY_STORE:
+            break;
+
         default:
             break;
     }
@@ -1221,13 +1224,13 @@ azureus_rpc_find_value_req_encode(struct azureus_rpc_msg *msg)
         return ret;
     }
 
-    ret = pkt_write_byte(&msg->pkt, msg->m.find_value_req.key_len);
+    ret = pkt_write_byte(&msg->pkt, msg->m.find_value_req.key.len);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    ret = pkt_write_arr(&msg->pkt, msg->m.find_value_req.key, 
-                        msg->m.find_value_req.key_len);
+    ret = pkt_write_arr(&msg->pkt, msg->m.find_value_req.key.data, 
+                        msg->m.find_value_req.key.len);
     if (ret != SUCCESS) {
         return ret;
     }
@@ -1258,21 +1261,25 @@ azureus_rpc_find_value_req_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
+    bzero(&msg->m.find_value_req.key, sizeof(msg->m.find_value_req.key));
+
     ret = azureus_rpc_udp_req_decode(msg);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    ret = pkt_read_byte(&msg->pkt, &msg->m.find_value_req.key_len);
+    ret = pkt_read_byte(&msg->pkt, &msg->m.find_value_req.key.len);
     if (ret != SUCCESS) {
         return ret;
     }
 
-    ret = pkt_read_arr(&msg->pkt, msg->m.find_value_req.key, 
-                        msg->m.find_value_req.key_len);
+    ret = pkt_read_arr(&msg->pkt, msg->m.find_value_req.key.data, 
+                        msg->m.find_value_req.key.len);
     if (ret != SUCCESS) {
         return ret;
     }
+
+    DEBUG("key len %d\n", msg->m.find_value_req.key.len);
 
     ret = pkt_read_byte(&msg->pkt, &flags);
     if (ret != SUCCESS) {
@@ -1306,8 +1313,6 @@ azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    TAILQ_INIT(&msg->m.find_value_rsp.node_list);
-
     ret = azureus_rpc_udp_rsp_encode(msg);
     if (ret != SUCCESS) {
         return ret;
@@ -1340,16 +1345,16 @@ azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
                 return ret;
             }
         }
-#if 0
-        /* serialize vivaldi */
-        if (ad->proto_ver >= PROTOCOL_VERSION_VIVALDI_FINDVALUE) {
-            ret = azureus_rpc_vivaldi_pos_encode(msg);
+
+        if (ad->proto_ver >= PROTOCOL_VERSION_VIVALDI) {
+            ret = azureus_rpc_vivaldi_encode(msg);
             if (ret != SUCCESS) {
                 return ret;
             }
         }
-#endif  
+
     } else {
+
         if (ad->proto_ver >= PROTOCOL_VERSION_DIV_AND_CONT) {
             ret = pkt_write_byte(&msg->pkt, msg->m.find_value_rsp.div_type);
             if (ret != SUCCESS) {
@@ -1358,7 +1363,7 @@ azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
         }
 
         ret = azureus_pkt_write_db_valset(&msg->pkt, 
-                                            &msg->m.find_value_rsp.valset, 
+                                            msg->m.find_value_rsp.valset, 
                                             ad->proto_ver);
         if (ret != SUCCESS) {
             return ret;
@@ -1399,6 +1404,8 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
 
     if (!msg->m.find_value_rsp.has_vals) {
         /* there are no values, but a list of nodes */
+        TAILQ_INIT(&msg->m.find_value_rsp.node_list);
+
         ret = pkt_read_short(&msg->pkt, &msg->m.find_value_rsp.n_nodes);
         if (ret != SUCCESS) {
             return ret;
@@ -1417,15 +1424,14 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
 
             TAILQ_INSERT_TAIL(&msg->m.find_value_rsp.node_list, pazn, next);
         }
-#if 0
-        /* serialize vivaldi */
-        if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_VIVALDI_FINDVALUE) {
-            ret = azureus_rpc_vivaldi_pos_encode(msg);
+
+        if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_VIVALDI) {
+            ret = azureus_rpc_vivaldi_decode(msg);
             if (ret != SUCCESS) {
                 return ret;
             }
         }
-#endif  
+
     } else {
         if (msg->u.udp_rsp.proto_ver >= PROTOCOL_VERSION_DIV_AND_CONT) {
             ret = pkt_read_byte(&msg->pkt, &msg->m.find_value_rsp.div_type);
@@ -1460,9 +1466,6 @@ azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
     int ret;
 
     ASSERT(msg);
-
-    TAILQ_INIT(&msg->m.store_value_req.key_list);
-    TAILQ_INIT(&msg->m.store_value_req.valset_list);
 
     ret = azureus_rpc_udp_req_encode(msg);
     if (ret != SUCCESS) {
@@ -1515,8 +1518,8 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
 {
     int i;
     struct azureus_dht *ad = NULL;
-    struct azureus_db_key key, *pkey = NULL;
-    struct azureus_db_valset valset, *pvalset = NULL;
+    struct azureus_db_key *pkey = NULL;
+    struct azureus_db_valset *pvalset = NULL;
     int ret;
 
     ASSERT(msg);
@@ -1546,17 +1549,12 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     DEBUG("n_keys %d\n", msg->m.store_value_req.n_keys);
 
     for (i = 0; i < msg->m.store_value_req.n_keys; i++) {
-        ret = azureus_pkt_read_db_key(&msg->pkt, &key);
+        ret = azureus_pkt_read_db_key(&msg->pkt, &pkey);
         if (ret != SUCCESS) {
             return ret;
         }
 
-        pkey = azureus_db_key_new(key.data, key.len);
-        if (!pkey) {
-            return FAILURE;
-        }
-
-        DEBUG("key len %#x\n", key.len);
+        DEBUG("key len %#x\n", pkey->len);
 
         TAILQ_INSERT_TAIL(&msg->m.store_value_req.key_list, pkey, next);
     }
@@ -1568,19 +1566,23 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
 
     DEBUG("n_valsets %d\n", msg->m.store_value_req.n_valsets);
 
+    /* sanity check */
+    if (msg->m.store_value_req.n_keys != msg->m.store_value_req.n_valsets) {
+        ERROR("n_keys %d and n_valsets %d are not equal!!\n", 
+                msg->m.store_value_req.n_keys, msg->m.store_value_req.n_valsets);
+        return FAILURE;
+    }
+
+    /* FIXME: a better check is required - actually walk the lists? */
+
     for (i = 0; i < msg->m.store_value_req.n_valsets; i++) {
-        ret = azureus_pkt_read_db_valset(&msg->pkt, &valset, 
+        ret = azureus_pkt_read_db_valset(&msg->pkt, &pvalset, 
                                             msg->u.udp_req.proto_ver);
         if (ret != SUCCESS) {
             return ret;
         }
 
-        pvalset = azureus_db_valset_new(valset.n_vals, &valset.val_list);
-        if (!pvalset) {
-            return FAILURE;
-        }
-
-        DEBUG("n_vals %#x\n", valset.n_vals);
+        DEBUG("n_vals %#x\n", pvalset->n_vals);
 
         TAILQ_INSERT_TAIL(&msg->m.store_value_req.valset_list, pvalset, next);
     }

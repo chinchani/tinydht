@@ -161,14 +161,13 @@ struct azureus_rpc_find_node_rsp {
 struct azureus_rpc_find_value_req {
     u8                          flags;
     u8                          max_vals;
-    u8                          key[AZUREUS_MAX_KEY_LEN];
-    u8                          key_len;
+    struct azureus_db_key       key;
 };
 
 struct azureus_rpc_find_value_rsp {
     bool                        has_cont;
     bool                        has_vals;
-    struct azureus_db_valset    valset;
+    struct azureus_db_valset    *valset;
     u8                          div_type;   /* diversification type */
     u16                         n_nodes;
     TAILQ_HEAD(find_value_rsp_node_list_head, azureus_node) node_list;
@@ -178,11 +177,8 @@ struct azureus_rpc_find_value_rsp {
 struct azureus_rpc_store_value_req {
     u32                         rnd_id;
     u8                          n_keys;
-    /* FIXME: make this a TAILQ? 17M!! */ 
-//    struct azureus_db_key       key[AZUREUS_MAX_KEYS_PER_PKT];
     TAILQ_HEAD(store_value_req_key_list_head, azureus_db_key) key_list;
     u8                          n_valsets;
-//   struct azureus_db_valset    valset[AZUREUS_MAX_KEYS_PER_PKT];
     TAILQ_HEAD(store_value_req_valset_list_head, azureus_db_valset) valset_list;
 };
 

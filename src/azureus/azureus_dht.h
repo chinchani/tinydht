@@ -37,6 +37,7 @@ struct azureus_dht {
     struct azureus_node         *this_node;
     struct azureus_node         *bootstrap;
     struct kbucket              kbucket[160];
+    u64                         cr_time;
     TAILQ_HEAD(azureus_new_node_list_head, azureus_node)        new_node_list;
     TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
@@ -67,7 +68,7 @@ struct azureus_dht_mem_stats {
 
 /* Rate limiting */
 #define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
-#define RATE_LIMIT_BITS_PER_SEC (1*1024)        /* 1 Kbps */
+#define RATE_LIMIT_BITS_PER_SEC (5*1024)
 
 /*-------------------------------------------------------------
  *

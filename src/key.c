@@ -44,9 +44,9 @@ key_new(struct key *k, enum key_type type, void *data, int data_len)
                 return FAILURE;
             }
 
-            k->len = 20;
             crypto_get_sha1_digest(buf, 16, k->data);
             k->type = KEY_TYPE_SHA1;
+            k->len = 20;
             break;
 
         case KEY_TYPE_SHA1:
@@ -54,8 +54,8 @@ key_new(struct key *k, enum key_type type, void *data, int data_len)
                 return FAILURE;
             }
             
-            k->len = 20;
             memcpy(k->data, data, 20);
+            k->len = 20;
             break;
 
         default:

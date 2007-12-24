@@ -65,6 +65,9 @@ static int azureus_dht_db_refresh(struct azureus_dht *ad);
 static bool azureus_dht_is_stable(struct azureus_dht *ad);
 static int azureus_dht_task_count(struct azureus_dht *ad);
 static bool azureus_dht_rate_limit_allow(struct task *task);
+static struct azureus_db_item * azureus_dht_find_db_item(
+                                            struct azureus_dht *ad, 
+                                            struct azureus_db_key *db_key);
 
 /*********************** Function Definitions ***********************/
 
@@ -171,6 +174,8 @@ azureus_dht_new(struct dht_net_if *nif, int port)
 
     azureus_dht_add_node(ad, bootstrap);
     DEBUG("Added bootstrap node\n");
+
+    ad->cr_time = dht_get_current_time();
 
     INFO("Azureus DHT listening on port %hu\n", ntohs(ad->dht.port));
 
@@ -286,16 +291,17 @@ azureus_dht_task_schedule(struct dht *dht)
                 break;
 
             case PKT_DIR_TX:
+
+                if (!azureus_dht_rate_limit_allow(task)) {
+                    rate_limit_allow = FALSE;
+                    break;
+                }
+
                 DEBUG("TX\n");
                 pkt_reset_data(&msg->pkt);
                 ret = azureus_rpc_encode(msg);  /* FIXME: encode everytime? */
                 if (ret != SUCCESS) {
                     return FAILURE;
-                }
-
-                if (!azureus_dht_rate_limit_allow(task)) {
-                    rate_limit_allow = FALSE;
-                    break;
                 }
 
                 azureus_rpc_tx(ad, task, msg);
@@ -377,7 +383,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     int n_list = 0;
     struct node *tn = NULL, *tnn = NULL;
     struct key key;
-    struct azureus_db_item *db_item = NULL, *db_itemn = NULL;
+    struct azureus_db_item *db_item = NULL;
+    struct azureus_db_key *db_key = NULL, *db_keyn = NULL;
+    struct azureus_db_valset *db_valset = NULL, *db_valsetn = NULL;
     int ret;
 
     ASSERT(dht && from && data);
@@ -408,7 +416,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             DEBUG("Added new node %p\n", an);
         }
 
-        /* create a response and send */
+        /* prepare a response to the request */
         rsp = azureus_rpc_msg_new(dht, from, fromlen, NULL, 0);
         rsp->pkt.dir = PKT_DIR_TX;
         rsp->r.req = msg;
@@ -420,31 +428,98 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                         sizeof(struct azureus_vivaldi_pos));
 
         switch (msg->action) {
+
             case ACT_REQUEST_PING:
+
                 rsp->action = ACT_REPLY_PING;
+
                 break;
 
             case ACT_REQUEST_FIND_NODE:
+
                 rsp->action = ACT_REPLY_FIND_NODE;
                 rsp->m.find_node_rsp.rnd_id = an->rnd_id;
                 ret = key_new(&key, KEY_TYPE_SHA1, msg->m.find_node_req.id, 
-                                msg->m.find_node_req.id_len);
+                        msg->m.find_node_req.id_len);
 
                 azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
-                                                &list, &n_list);
+                        &list, &n_list);
                 TAILQ_INIT(&rsp->m.find_node_rsp.node_list);
                 TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
                     an = azureus_node_get_ref(tn);
                     TAILQ_INSERT_TAIL(&rsp->m.find_node_rsp.node_list, 
-                                        an, next);
+                            an, next);
                 }
                 rsp->m.find_node_rsp.n_nodes = n_list;
+
                 break;
 
             case ACT_REQUEST_FIND_VALUE:
+
                 rsp->action = ACT_REPLY_FIND_VALUE;
                 /* do we already have this value? */
+                db_item = azureus_dht_find_db_item(ad, 
+                                                    &msg->m.find_value_req.key);
+                DEBUG("db_item %p\n", db_item);
+                if (db_item) {
+                    /* we have this key-value pair */
+                    rsp->m.find_value_rsp.has_vals = TRUE;
+                    rsp->m.find_value_rsp.valset = db_item->valset;
+                    rsp->m.find_value_rsp.div_type = DT_NONE;
+
+                } else {
+                    /* we don't, so send the k-closest nodes */
+                    rsp->m.find_value_rsp.has_vals = FALSE;
+
+                    ret = key_new(&key, KEY_TYPE_SHA1, 
+                                    msg->m.find_value_req.key.data, 
+                                    msg->m.find_value_req.key.len);
+                    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
+                            &list, &n_list);
+
+                    DEBUG("n_list %d\n", n_list);
+
+                    TAILQ_INIT(&rsp->m.find_value_rsp.node_list);
+                    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+                        an = azureus_node_get_ref(tn);
+                        TAILQ_INSERT_TAIL(&rsp->m.find_value_rsp.node_list, 
+                                an, next);
+                    }
+                    rsp->m.find_value_rsp.n_nodes = n_list;
+                }
+
+                break;
+
             case ACT_REQUEST_STORE:
+
+                rsp->action = ACT_REPLY_STORE;
+                /* store the values */
+                TAILQ_FOREACH_SAFE(db_key, &msg->m.store_value_req.key_list, 
+                                    next, db_keyn) {
+                    TAILQ_REMOVE(&msg->m.store_value_req.key_list, 
+                                    db_key, next);
+                    db_valset = db_valsetn = NULL;
+                    TAILQ_FOREACH_SAFE(db_valset, 
+                                        &msg->m.store_value_req.valset_list, 
+                                        next, db_valsetn) {
+                        TAILQ_REMOVE(&msg->m.store_value_req.valset_list, 
+                                        db_valset, next);
+                        break;
+                    }
+
+                    db_item = azureus_db_item_new(ad, db_key, db_valset);
+                    if (!db_item) {
+                        break;
+                    }
+
+                    TAILQ_INSERT_TAIL(&ad->db_list, db_item, db_next);
+                    DEBUG("Added new db item\n");
+                }
+
+                rsp->m.store_value_rsp.n_divs = 0;
+
+                break;
+
             default:
                 azureus_rpc_msg_delete(rsp);
                 azureus_rpc_msg_delete(msg);
@@ -571,6 +646,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 int
 azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 {
+#if 0
     struct azureus_db_item *item = NULL, *itemn = NULL;
     struct azureus_dht *ad = NULL;
     int ret;
@@ -601,7 +677,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
         }
     }
 
-    item = azureus_db_item_new(ad);
+    item = azureus_db_item_new(ad, NULL, NULL);
     if (!item) {
         return FAILURE;
     }
@@ -630,6 +706,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
     TAILQ_INSERT_TAIL(&ad->db_list, item, db_next);
 
     DEBUG("PUT successful\n");
+#endif
 
     return SUCCESS;
 }
@@ -637,6 +714,7 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 int
 azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 {
+#if 0
     struct azureus_db_item *item = NULL;
     struct azureus_dht *ad = NULL;
     struct azureus_db_val *v = NULL;
@@ -666,8 +744,9 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
             return SUCCESS;
         }
     }
+#endif
 
-    return FAILURE;
+    return SUCCESS;
 }
 
 static int
@@ -1064,6 +1143,11 @@ azureus_dht_is_stable(struct azureus_dht *ad)
         return FALSE;
     }
 
+    if (azureus_rpc_msg_count > 0) {
+        return FALSE;
+    }
+
+    DEBUG("stable in %lld seconds\n", (curr_time - ad->cr_time)/(1000*1000));
     DEBUG("stable count %d\n", prev_count);
     azureus_dht_task_count(ad);
     azureus_dht_kbucket_stats(ad);
@@ -1153,5 +1237,19 @@ azureus_dht_rate_limit_allow(struct task *task)
     }
 
     return TRUE;
+}
+
+static struct azureus_db_item *
+azureus_dht_find_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key)
+{
+    struct azureus_db_item *item = NULL, *itemn = NULL;
+
+    TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
+        if (azureus_db_key_equal(item->key, db_key) == 0) {
+            return item;
+        }
+    }
+
+    return NULL;
 }
 

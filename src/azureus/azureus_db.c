@@ -24,11 +24,9 @@
 #include "crypto.h"
 
 struct azureus_db_key *
-azureus_db_key_new(u8 *data, int len)
+azureus_db_key_new(void)
 {
     struct azureus_db_key *k = NULL;
-
-    ASSERT(data && len);
 
     k = (struct azureus_db_key *) malloc(sizeof(struct azureus_db_key));
     if (!k) {
@@ -36,8 +34,6 @@ azureus_db_key_new(u8 *data, int len)
     }
 
     bzero(k, sizeof(struct azureus_db_key));
-    k->len = len;
-    memcpy(k->data, data, len);
 
     return k;
 }
@@ -49,7 +45,7 @@ azureus_db_key_delete(struct azureus_db_key *key)
 }
 
 bool
-azureus_db_key_match(struct azureus_db_key *k1, struct azureus_db_key *k2)
+azureus_db_key_equal(struct azureus_db_key *k1, struct azureus_db_key *k2)
 {
     ASSERT(k1 && k2);
 
@@ -90,13 +86,9 @@ azureus_db_val_delete(struct azureus_db_val *v)
 }
 
 struct azureus_db_valset *
-azureus_db_valset_new(int n_vals, struct val_list_head *head)
+azureus_db_valset_new(void)
 {
     struct azureus_db_valset *vs = NULL;
-    struct azureus_db_val *v = NULL;
-    int ret;
-
-    ASSERT(head && n_vals);
 
     vs = (struct azureus_db_valset *) malloc(sizeof(struct azureus_db_valset));
     if (!vs) {
@@ -104,35 +96,21 @@ azureus_db_valset_new(int n_vals, struct val_list_head *head)
     }
 
     bzero(vs, sizeof(struct azureus_db_valset));
-    vs->n_vals = n_vals;
+
     TAILQ_INIT(&vs->val_list);
 
-    TAILQ_FOREACH(v, head, next) {
-        ret = azureus_db_valset_add_val(vs, v->data, v->len);
-        if (ret != SUCCESS) {
-            goto err;
-        }
-    }
-
     return vs;
-
-err:
-    azureus_db_valset_delete(vs);
-
-    return NULL;
 }
 
 void
 azureus_db_valset_delete(struct azureus_db_valset *vs)
 {
-    struct azureus_db_val *v = NULL;
+    struct azureus_db_val *v = NULL, *vn = NULL;
 
     ASSERT(vs);
 
-    while (vs->val_list.tqh_first != NULL) {
-        v = TAILQ_FIRST(&vs->val_list);
-        TAILQ_REMOVE(&vs->val_list, 
-                vs->val_list.tqh_first, next);
+    TAILQ_FOREACH_SAFE(v, &vs->val_list, next, vn) {
+        TAILQ_REMOVE(&vs->val_list, vn, next);
         azureus_db_val_delete(v);
     }
 
@@ -159,9 +137,12 @@ azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
 }
 
 struct azureus_db_item *
-azureus_db_item_new(struct azureus_dht *dht)
+azureus_db_item_new(struct azureus_dht *dht, struct azureus_db_key *key, 
+                    struct azureus_db_valset *valset)
 {
     struct azureus_db_item *item = NULL;
+
+    ASSERT(dht && key && valset);
 
     item = (struct azureus_db_item *) malloc(sizeof(struct azureus_db_item));
     if (!item) {
@@ -170,9 +151,11 @@ azureus_db_item_new(struct azureus_dht *dht)
 
     bzero(item, sizeof(struct azureus_db_item));
     item->dht = dht;
+    item->key = key;
+    item->valset = valset;
     item->cr_time = dht_get_current_time();
 
-    TAILQ_INIT(&item->valset.val_list);
+    TAILQ_INIT(&item->valset->val_list);
         
     return item;
 }
@@ -180,23 +163,17 @@ azureus_db_item_new(struct azureus_dht *dht)
 void
 azureus_db_item_delete(struct azureus_db_item *item)
 {
-    struct azureus_db_val *v = NULL;
-
     ASSERT(item);
 
-    while (item->valset.val_list.tqh_first != NULL) {
-        v = TAILQ_FIRST(&item->valset.val_list);
-        TAILQ_REMOVE(&item->valset.val_list, 
-                item->valset.val_list.tqh_first, next);
-        azureus_db_val_delete(v);
-    }
+    azureus_db_key_delete(item->key);
+    azureus_db_valset_delete(item->valset);
 
     TAILQ_REMOVE(&item->dht->db_list, item, db_next);
     free(item);
 
     return;
 }
-
+#if 0
 int
 azureus_db_item_set_key(struct azureus_db_item *item, u8 *key, int key_len)
 {
@@ -212,8 +189,8 @@ azureus_db_item_set_key(struct azureus_db_item *item, u8 *key, int key_len)
         return ret;
     }
 
-    memcpy(item->key.data, digest, 20);
-    item->key.len = 20;
+    memcpy(item->key->data, digest, 20);
+    item->key->len = 20;
 
     return SUCCESS;
 }
@@ -246,11 +223,12 @@ azureus_db_item_match_key(struct azureus_db_item *item, u8 *key, int key_len)
         return FALSE;
     }
 
-    ASSERT(item->key.len == 20);
+    ASSERT(item->key->len == 20);
 
-    if (memcmp(item->key.data, digest, 20) == 0) {
+    if (memcmp(item->key->data, digest, 20) == 0) {
         return TRUE;
     }
 
     return FALSE;
 }
+#endif
