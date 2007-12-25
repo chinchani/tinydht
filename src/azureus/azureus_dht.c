@@ -65,6 +65,11 @@ static int azureus_dht_db_refresh(struct azureus_dht *ad);
 static bool azureus_dht_is_stable(struct azureus_dht *ad);
 static int azureus_dht_task_count(struct azureus_dht *ad);
 static bool azureus_dht_rate_limit_allow(struct task *task);
+static int azureus_dht_add_db_item(struct azureus_dht *ad, 
+                                    struct azureus_db_key *db_key, 
+                                    struct azureus_db_valset *db_valset);
+static int azureus_dht_delete_db_item(struct azureus_dht *ad, 
+                                        struct azureus_db_key *db_key);
 static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
@@ -342,6 +347,8 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task,
 
     pkt_dump(&msg->pkt);
 
+    ad->stats.net.tx += ret;
+
     if (!task) {
         return SUCCESS;
     }
@@ -391,6 +398,8 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     ASSERT(dht && from && data);
 
     ad = azureus_dht_get_ref(dht);
+
+    ad->stats.net.rx += len;
 
     /* decode the rpc msg */
     ret = azureus_rpc_decode(dht, from, fromlen, data, len, &msg);
@@ -494,31 +503,33 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
             case ACT_REQUEST_STORE:
 
+                if (an->rnd_id != msg->m.store_value_req.rnd_id) {
+                    ERROR("spoof id mismatch!\n");
+                    break;
+                }
+
                 /* store the values */
                 TAILQ_FOREACH_SAFE(db_key, &msg->m.store_value_req.key_list, 
                                     next, db_keyn) {
 
+                    /* if there was already a db_item, remove it! */
+                    azureus_dht_delete_db_item(ad, db_key);
+
                     TAILQ_REMOVE(&msg->m.store_value_req.key_list, 
                                     db_key, next);
-
                     db_valset = db_valsetn = NULL;
-
                     TAILQ_FOREACH_SAFE(db_valset, 
                                         &msg->m.store_value_req.valset_list, 
                                         next, db_valsetn) {
                         TAILQ_REMOVE(&msg->m.store_value_req.valset_list, 
                                         db_valset, next);
-                        DEBUG("valset removed\n");
                         break;
                     }
 
-                    db_item = azureus_db_item_new(ad, db_key, db_valset);
-                    if (!db_item) {
+                    ret = azureus_dht_add_db_item(ad, db_key, db_valset);
+                    if (ret != SUCCESS) {
                         break;
                     }
-
-                    TAILQ_INSERT_TAIL(&ad->db_list, db_item, db_next);
-                    DEBUG("Added new db item\n");
                 }
 
                 rsp->action = ACT_REPLY_STORE;
@@ -1124,6 +1135,7 @@ azureus_dht_is_stable(struct azureus_dht *ad)
     u64 curr_time = 0;
     static int prev_count = 0;
     int curr_count = 0;
+    u64 elapsed = 0;
 
     ASSERT(ad);
 
@@ -1153,12 +1165,17 @@ azureus_dht_is_stable(struct azureus_dht *ad)
         return FALSE;
     }
 
-    DEBUG("stable in %lld seconds\n", (curr_time - ad->cr_time)/(1000*1000));
+    elapsed = (curr_time - ad->cr_time)/(1000*1000);
+    DEBUG("stable in %lld seconds\n", elapsed);
     DEBUG("stable count %d\n", prev_count);
     azureus_dht_task_count(ad);
     azureus_dht_kbucket_stats(ad);
     DEBUG("azureus_node_count %d\n", azureus_node_count);
     DEBUG("azureus_rpc_msg_count %d\n", azureus_rpc_msg_count);
+    DEBUG("rx (bytes) %lld rx rate (Bps) %lld\n", 
+            ad->stats.net.rx, ad->stats.net.rx/(elapsed));
+    DEBUG("tx (bytes) %lld tx rate (Bps) %lld\n", 
+            ad->stats.net.tx, ad->stats.net.tx/(elapsed));
 
     return TRUE;
 }
@@ -1245,17 +1262,58 @@ azureus_dht_rate_limit_allow(struct task *task)
     return TRUE;
 }
 
+static int
+azureus_dht_add_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key, 
+                        struct azureus_db_valset *db_valset)
+{
+    struct azureus_db_item *db_item = NULL;
+
+    ASSERT(ad && db_key && db_valset);
+
+    db_item = azureus_db_item_new(ad, db_key, db_valset);
+    if (!db_item) {
+        return FAILURE;
+    }
+
+    TAILQ_INSERT_TAIL(&ad->db_list, db_item, db_next);
+    DEBUG("Added new db item %p\n", db_item);
+
+    return SUCCESS;
+}
+
+static int
+azureus_dht_delete_db_item(struct azureus_dht *ad, 
+                            struct azureus_db_key *db_key)
+{
+    struct azureus_db_item *item = NULL, *itemn = NULL;
+
+    ASSERT(ad && db_key);
+
+    TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
+        if (!azureus_db_key_equal(item->key, db_key)) {
+            continue;
+        }
+
+        TAILQ_REMOVE(&ad->db_list, item, db_next);
+        azureus_db_item_delete(item);
+        DEBUG("Deleted db item %p\n", item);
+    }
+
+    return SUCCESS;
+}
+
 static struct azureus_db_item *
 azureus_dht_find_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key)
 {
     struct azureus_db_item *item = NULL, *itemn = NULL;
 
+    ASSERT(ad && db_key);
+
     TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
-        if (azureus_db_key_equal(item->key, db_key) == 0) {
+        if (azureus_db_key_equal(item->key, db_key)) {
             return item;
         }
     }
 
     return NULL;
 }
-

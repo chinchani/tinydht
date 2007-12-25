@@ -133,12 +133,12 @@ azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
 }
 
 struct azureus_db_item *
-azureus_db_item_new(struct azureus_dht *dht, struct azureus_db_key *key, 
+azureus_db_item_new(struct azureus_dht *ad, struct azureus_db_key *key, 
                     struct azureus_db_valset *valset)
 {
     struct azureus_db_item *item = NULL;
 
-    ASSERT(dht && key && valset);
+    ASSERT(ad && key && valset);
 
     item = (struct azureus_db_item *) malloc(sizeof(struct azureus_db_item));
     if (!item) {
@@ -146,7 +146,7 @@ azureus_db_item_new(struct azureus_dht *dht, struct azureus_db_key *key,
     }
 
     bzero(item, sizeof(struct azureus_db_item));
-    item->dht = dht;
+    item->dht = ad;
     item->key = key;
     item->valset = valset;
     item->cr_time = dht_get_current_time();

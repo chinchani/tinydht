@@ -27,6 +27,18 @@
 #include "azureus_node.h"
 #include "azureus_db.h"
 
+struct azureus_dht_net_stats {
+    u64         rx;
+    u64         tx;
+};
+
+struct azureus_dht_rpc_stats {
+    u64         ping_req_rx;
+    u64         ping_req_tx;
+    u64         ping_rsp_rx;
+    u64         ping_rsp_tx;
+};
+
 struct azureus_dht {
     struct dht                  dht;
     u32                         trans_id;
@@ -41,12 +53,12 @@ struct azureus_dht {
     TAILQ_HEAD(azureus_new_node_list_head, azureus_node)        new_node_list;
     TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
-};
 
-struct azureus_dht_mem_stats {
-    int                         node;
-    int                         msg;
-    int                         task;
+    /* DHT stats */
+    struct {
+        struct azureus_dht_net_stats        net;
+        struct azureus_dht_rpc_stats        rpc;
+    } stats;
 };
 
 #define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
