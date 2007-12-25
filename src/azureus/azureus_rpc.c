@@ -101,6 +101,8 @@ void
 azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL, *ann = NULL;
+    struct azureus_db_key *db_key = NULL, *db_keyn = NULL;
+    struct azureus_db_valset *db_valset = NULL, *db_valsetn = NULL;
 
     if (msg->pkt.dir != PKT_DIR_RX) {
         goto out;
@@ -124,6 +126,19 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
             break;
 
         case ACT_REPLY_STORE:
+            TAILQ_FOREACH_SAFE(db_key, &msg->m.store_value_req.key_list,
+                    next, db_keyn) {
+                TAILQ_REMOVE(&msg->m.store_value_req.key_list, db_key, next);
+                azureus_db_key_delete(db_key);
+            }
+
+            TAILQ_FOREACH_SAFE(db_valset, &msg->m.store_value_req.valset_list,
+                    next, db_valsetn) {
+                TAILQ_REMOVE(&msg->m.store_value_req.valset_list,
+                        db_valset, next);
+                azureus_db_valset_delete(db_valset);
+            }
+
             break;
 
         default:

@@ -517,7 +517,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
                     TAILQ_REMOVE(&msg->m.store_value_req.key_list, 
                                     db_key, next);
+
                     db_valset = db_valsetn = NULL;
+
                     TAILQ_FOREACH_SAFE(db_valset, 
                                         &msg->m.store_value_req.valset_list, 
                                         next, db_valsetn) {
