@@ -1355,6 +1355,8 @@ azureus_rpc_find_value_rsp_encode(struct azureus_rpc_msg *msg)
 
     } else {
 
+        DEBUG("has vals\n");
+
         if (ad->proto_ver >= PROTOCOL_VERSION_DIV_AND_CONT) {
             ret = pkt_write_byte(&msg->pkt, msg->m.find_value_rsp.div_type);
             if (ret != SUCCESS) {
@@ -1569,11 +1571,14 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
     /* sanity check */
     if (msg->m.store_value_req.n_keys != msg->m.store_value_req.n_valsets) {
         ERROR("n_keys %d and n_valsets %d are not equal!!\n", 
-                msg->m.store_value_req.n_keys, msg->m.store_value_req.n_valsets);
+                msg->m.store_value_req.n_keys, 
+                msg->m.store_value_req.n_valsets);
+
         return FAILURE;
     }
 
-    /* FIXME: a better check is required - actually walk the lists? */
+    /* FIXME: a better check is required?
+     * - walk the key_list and valset_list and count for equality? */
 
     for (i = 0; i < msg->m.store_value_req.n_valsets; i++) {
         ret = azureus_pkt_read_db_valset(&msg->pkt, &pvalset, 
@@ -1581,7 +1586,8 @@ azureus_rpc_store_value_req_decode(struct azureus_rpc_msg *msg)
         if (ret != SUCCESS) {
             return ret;
         }
-
+        
+        DEBUG("pvalset %p\n", pvalset);
         DEBUG("n_vals %#x\n", pvalset->n_vals);
 
         TAILQ_INSERT_TAIL(&msg->m.store_value_req.valset_list, pvalset, next);

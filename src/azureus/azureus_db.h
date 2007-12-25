@@ -63,7 +63,7 @@ struct azureus_db_key * azureus_db_key_new(void);
 void azureus_db_key_delete(struct azureus_db_key *key);
 bool azureus_db_key_equal(struct azureus_db_key *k1, struct azureus_db_key *k2);
 
-struct azureus_db_val * azureus_db_val_new(u8 *val, int val_len);
+struct azureus_db_val * azureus_db_val_new(void);
 void azureus_db_val_delete(struct azureus_db_val *v);
 struct azureus_db_valset * azureus_db_valset_new(void);
 void azureus_db_valset_delete(struct azureus_db_valset *vs);

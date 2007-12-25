@@ -61,11 +61,9 @@ azureus_db_key_equal(struct azureus_db_key *k1, struct azureus_db_key *k2)
 }
 
 struct azureus_db_val *
-azureus_db_val_new(u8 *val, int val_len)
+azureus_db_val_new(void)
 {
     struct azureus_db_val *v = NULL;
-
-    ASSERT((val_len > 0) && val);
 
     v = (struct azureus_db_val *) malloc(sizeof(struct azureus_db_val));
     if (!v) {
@@ -73,8 +71,6 @@ azureus_db_val_new(u8 *val, int val_len)
     }
 
     bzero(v, sizeof(struct azureus_db_val));
-    v->len = val_len;
-    memcpy(v->data, val, val_len);
 
     return v;
 }
@@ -124,7 +120,7 @@ azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
 
     ASSERT(vs && (val_len > 0) && val);
 
-    v = azureus_db_val_new(val, val_len);
+    v = azureus_db_val_new();
     if (!v) {
         return FAILURE;
     }
@@ -155,8 +151,6 @@ azureus_db_item_new(struct azureus_dht *dht, struct azureus_db_key *key,
     item->valset = valset;
     item->cr_time = dht_get_current_time();
 
-    TAILQ_INIT(&item->valset->val_list);
-        
     return item;
 }
 

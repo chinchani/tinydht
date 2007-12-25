@@ -467,6 +467,8 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     rsp->m.find_value_rsp.valset = db_item->valset;
                     rsp->m.find_value_rsp.div_type = DT_NONE;
 
+                    DEBUG("valset n_vals %d\n", db_item->valset->n_vals);
+
                 } else {
                     /* we don't, so send the k-closest nodes */
                     rsp->m.find_value_rsp.has_vals = FALSE;
@@ -492,18 +494,21 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
             case ACT_REQUEST_STORE:
 
-                rsp->action = ACT_REPLY_STORE;
                 /* store the values */
                 TAILQ_FOREACH_SAFE(db_key, &msg->m.store_value_req.key_list, 
                                     next, db_keyn) {
+
                     TAILQ_REMOVE(&msg->m.store_value_req.key_list, 
                                     db_key, next);
+
                     db_valset = db_valsetn = NULL;
+
                     TAILQ_FOREACH_SAFE(db_valset, 
                                         &msg->m.store_value_req.valset_list, 
                                         next, db_valsetn) {
                         TAILQ_REMOVE(&msg->m.store_value_req.valset_list, 
                                         db_valset, next);
+                        DEBUG("valset removed\n");
                         break;
                     }
 
@@ -516,6 +521,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     DEBUG("Added new db item\n");
                 }
 
+                rsp->action = ACT_REPLY_STORE;
                 rsp->m.store_value_rsp.n_divs = 0;
 
                 break;
