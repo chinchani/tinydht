@@ -52,6 +52,9 @@ static int azureus_dht_add_node(struct azureus_dht *ad,
                             struct azureus_node *an);
 static int azureus_dht_delete_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
+static struct azureus_node * azureus_dht_get_node(struct azureus_dht *ad, 
+                                                struct sockaddr_storage *ss, 
+                                                u8 proto_ver);
 static bool azureus_dht_contains_node(struct azureus_dht *ad, 
                                 struct azureus_node *an);
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
@@ -412,15 +415,14 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
     if (msg->is_req) {  /* REQUEST */
 
-        an = azureus_node_new(msg->u.udp_req.proto_ver, &msg->pkt.ss);
+        an = azureus_dht_get_node(ad, &msg->pkt.ss, msg->u.udp_req.proto_ver);
         if (!an) {
-            azureus_rpc_msg_delete(msg);
-            return FAILURE;
-        }
+            an = azureus_node_new(msg->u.udp_req.proto_ver, &msg->pkt.ss);
+            if (!an) {
+                azureus_rpc_msg_delete(msg);
+                return FAILURE;
+            }
 
-        if (azureus_dht_contains_node(ad, an)) {
-            azureus_node_delete(an);
-        } else {
             azureus_dht_add_node(ad, an);
             DEBUG("Added new node %p\n", an);
         }
@@ -439,13 +441,10 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
         switch (msg->action) {
 
             case ACT_REQUEST_PING:
-
                 rsp->action = ACT_REPLY_PING;
-
                 break;
 
             case ACT_REQUEST_FIND_NODE:
-
                 rsp->action = ACT_REPLY_FIND_NODE;
                 rsp->m.find_node_rsp.rnd_id = an->rnd_id;
                 ret = key_new(&key, KEY_TYPE_SHA1, msg->m.find_node_req.id, 
@@ -460,11 +459,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                             an, next);
                 }
                 rsp->m.find_node_rsp.n_nodes = n_list;
-
                 break;
 
             case ACT_REQUEST_FIND_VALUE:
-
                 rsp->action = ACT_REPLY_FIND_VALUE;
                 /* do we already have this value? */
                 db_item = azureus_dht_find_db_item(ad, 
@@ -498,11 +495,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     }
                     rsp->m.find_value_rsp.n_nodes = n_list;
                 }
-
                 break;
 
             case ACT_REQUEST_STORE:
-
                 if (an->rnd_id != msg->m.store_value_req.rnd_id) {
                     ERROR("spoof id mismatch!\n");
                     break;
@@ -536,7 +531,6 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
                 rsp->action = ACT_REPLY_STORE;
                 rsp->m.store_value_rsp.n_divs = 0;
-
                 break;
 
             default:
@@ -905,6 +899,29 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
 
     return SUCCESS;
+}
+
+static struct azureus_node *
+azureus_dht_get_node(struct azureus_dht *ad, struct sockaddr_storage *ss, 
+                        u8 proto_ver)
+{
+    struct key k;
+    int index;
+    struct node *n = NULL;
+    int ret;
+
+    ret = azureus_node_get_id(&k, ss, proto_ver);
+
+    /* is it in any kbucket? */
+    index = kbucket_index(&ad->this_node->node.id, &k);
+    DEBUG("index %d\n", index);
+    ASSERT(index < 160);
+    n = kbucket_get_node(&ad->kbucket[index], &k);
+    if (n) {
+        return azureus_node_get_ref(n);
+    }
+
+    return NULL;
 }
 
 static bool

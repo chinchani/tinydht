@@ -40,5 +40,6 @@ int kbucket_insert_node(struct kbucket *k, struct node *n);
 struct node * kbucket_delete_node(struct kbucket *k, struct node *n);
 int kbucket_index(struct key *self, struct key *k);
 int kbucket_contains_node(struct kbucket *k, struct node *n);
+struct node * kbucket_get_node(struct kbucket *k, struct key *key);
 
 #endif /* __KBUCKET_H__ */

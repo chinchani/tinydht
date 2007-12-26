@@ -78,6 +78,22 @@ kbucket_contains_node(struct kbucket *k, struct node *n)
     return FALSE;
 }
 
+struct node *
+kbucket_get_node(struct kbucket *k, struct key *key)
+{
+    struct node *tn = NULL, *tnn = NULL;
+
+    ASSERT(k && key);
+
+    LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
+        if (key_cmp(&tn->id, key) == 0) {
+            return tn;
+        }
+    }
+
+    return NULL;
+}
+
 int
 kbucket_index(struct key *self, struct key *k)
 {
