@@ -499,8 +499,11 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
             case ACT_REQUEST_STORE:
                 if (an->rnd_id != msg->m.store_value_req.rnd_id) {
-                    ERROR("spoof id mismatch!\n");
-                    break;
+                    ERROR("spoof id mismatch - %#x %#x!\n", 
+                            an->rnd_id, msg->m.store_value_req.rnd_id);
+                    azureus_rpc_msg_delete(rsp);
+                    azureus_rpc_msg_delete(msg);
+                    return FAILURE;
                 }
 
                 /* store the values */
@@ -546,6 +549,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
         }
 
         azureus_rpc_tx(ad, NULL, rsp);
+
         azureus_rpc_msg_delete(rsp);
 
     } else {            /* REPLY   */
