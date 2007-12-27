@@ -448,8 +448,6 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset **valset,
         return FAILURE;
     }
 
-    TAILQ_INIT(&(*valset)->val_list);
-
     ret = pkt_read_short(pkt, &(*valset)->n_vals);
     if (ret != SUCCESS) {
         *valset = NULL;

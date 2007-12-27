@@ -106,7 +106,7 @@ azureus_db_valset_delete(struct azureus_db_valset *vs)
     ASSERT(vs);
 
     TAILQ_FOREACH_SAFE(v, &vs->val_list, next, vn) {
-        TAILQ_REMOVE(&vs->val_list, vn, next);
+        TAILQ_REMOVE(&vs->val_list, v, next);
         azureus_db_val_delete(v);
     }
 
