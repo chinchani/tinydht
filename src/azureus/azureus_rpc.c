@@ -1144,8 +1144,6 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    DEBUG("pkt cursor %#x\n", msg->pkt.cursor);
-
     TAILQ_INIT(&msg->m.find_node_rsp.node_list);
 
     ret = azureus_rpc_udp_rsp_decode(msg);
@@ -1274,8 +1272,6 @@ azureus_rpc_find_value_req_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    TAILQ_INIT(&msg->m.find_value_rsp.node_list);
-
     ret = azureus_rpc_udp_req_decode(msg);
     if (ret != SUCCESS) {
         return ret;
@@ -1397,6 +1393,8 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
     int ret;
 
     ASSERT(msg);
+
+    TAILQ_INIT(&msg->m.find_value_rsp.node_list);
 
     ret = azureus_rpc_udp_rsp_decode(msg);
     if (ret != SUCCESS) {

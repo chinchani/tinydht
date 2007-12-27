@@ -339,6 +339,10 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task,
             (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
     if (ret < 0) {
         ERROR("sendto() - %s\n", strerror(errno));
+        ERROR("error sending %d bytes to %s/%hu\n", 
+            ret,
+            inet_ntoa(((struct sockaddr_in *)&msg->pkt.ss)->sin_addr),
+            ntohs(((struct sockaddr_in *)&msg->pkt.ss)->sin_port));
         return FAILURE;
     }
 
