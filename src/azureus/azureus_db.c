@@ -159,11 +159,14 @@ azureus_db_item_delete(struct azureus_db_item *item)
 {
     ASSERT(item);
 
+    DEBUG("before db_item_delete\n");
+    DEBUG("before key_delete\n");
     azureus_db_key_delete(item->key);
+    DEBUG("before valset_delete\n");
     azureus_db_valset_delete(item->valset);
-
-    TAILQ_REMOVE(&item->dht->db_list, item, db_next);
     free(item);
+
+    DEBUG("after db_item_delete\n");
 
     return;
 }

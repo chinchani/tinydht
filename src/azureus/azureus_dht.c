@@ -76,6 +76,7 @@ static int azureus_dht_delete_db_item(struct azureus_dht *ad,
 static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
+static void azureus_dht_db_stats(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -506,12 +507,11 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     return FAILURE;
                 }
 
+                azureus_dht_db_stats(ad);
+
                 /* store the values */
                 TAILQ_FOREACH_SAFE(db_key, &msg->m.store_value_req.key_list, 
                                     next, db_keyn) {
-
-                    /* if there was already a db_item, remove it! */
-                    azureus_dht_delete_db_item(ad, db_key);
 
                     TAILQ_REMOVE(&msg->m.store_value_req.key_list, 
                                     db_key, next);
@@ -1189,15 +1189,16 @@ azureus_dht_is_stable(struct azureus_dht *ad)
     }
 
     elapsed = (curr_time - ad->cr_time)/(1000*1000);
-    DEBUG("stable in %lld seconds\n", elapsed);
+    DEBUG("stable in %llu seconds\n", elapsed);
     DEBUG("stable count %d\n", prev_count);
     azureus_dht_task_count(ad);
     azureus_dht_kbucket_stats(ad);
+    azureus_dht_db_stats(ad);
     DEBUG("azureus_node_count %d\n", azureus_node_count);
     DEBUG("azureus_rpc_msg_count %d\n", azureus_rpc_msg_count);
-    DEBUG("rx (bytes) %lld rx rate (Bps) %lld\n", 
+    DEBUG("rx (bytes) %llu rx rate (Bps) %llu\n", 
             ad->stats.net.rx, ad->stats.net.rx/(elapsed));
-    DEBUG("tx (bytes) %lld tx rate (Bps) %lld\n", 
+    DEBUG("tx (bytes) %llu tx rate (Bps) %llu\n", 
             ad->stats.net.tx, ad->stats.net.tx/(elapsed));
 
     return TRUE;
@@ -1293,6 +1294,9 @@ azureus_dht_add_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key,
 
     ASSERT(ad && db_key && db_valset);
 
+    /* if there was already a db_item, remove it! */
+    azureus_dht_delete_db_item(ad, db_key);
+
     db_item = azureus_db_item_new(ad, db_key, db_valset);
     if (!db_item) {
         return FAILURE;
@@ -1333,10 +1337,32 @@ azureus_dht_find_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key)
     ASSERT(ad && db_key);
 
     TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
+        DEBUG("key_cmp\n");
+        pkt_dump_data(item->key->data, item->key->len);
+        pkt_dump_data(db_key->data, db_key->len);
         if (azureus_db_key_equal(item->key, db_key)) {
             return item;
         }
     }
 
     return NULL;
+}
+
+static void
+azureus_dht_db_stats(struct azureus_dht *ad)
+{
+    struct azureus_db_item *item = NULL, *itemn = NULL;
+    struct azureus_db_val *v = NULL, *vn = NULL;
+
+    ASSERT(ad);
+
+    TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
+        DEBUG("KEY\n");
+        pkt_dump_data(item->key->data, item->key->len);
+        DEBUG("VALSET n_vals %d\n", item->valset->n_vals);
+        TAILQ_FOREACH_SAFE(v, &item->valset->val_list, next, vn) {
+            DEBUG("VAL\n");
+            pkt_dump_data(v->data, v->len);
+        }
+    }
 }

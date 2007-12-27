@@ -252,13 +252,11 @@ azureus_rpc_decode(struct dht *dht,
 
         case ACT_REPLY_FIND_NODE:
             DEBUG("REPLY_FIND_NODE\n");
-            TAILQ_INIT(&msg->m.find_node_rsp.node_list);
             ret = azureus_rpc_find_node_rsp_decode(msg);
             break;
 
         case ACT_REQUEST_FIND_VALUE:
             DEBUG("REQUEST_FIND_VALUE\n");
-            TAILQ_INIT(&msg->m.find_value_rsp.node_list);
             ret = azureus_rpc_find_value_req_decode(msg);
             break;
 
@@ -1276,7 +1274,7 @@ azureus_rpc_find_value_req_decode(struct azureus_rpc_msg *msg)
 
     ASSERT(msg);
 
-    bzero(&msg->m.find_value_req.key, sizeof(msg->m.find_value_req.key));
+    TAILQ_INIT(&msg->m.find_value_rsp.node_list);
 
     ret = azureus_rpc_udp_req_decode(msg);
     if (ret != SUCCESS) {

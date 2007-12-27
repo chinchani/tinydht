@@ -259,16 +259,19 @@ azureus_pkt_read_db_key(struct pkt *pkt, struct azureus_db_key **key)
 
     *key = azureus_db_key_new();
     if (!(*key)) {
+        *key = NULL;
         return FAILURE;
     }
 
     ret = pkt_read_byte(pkt, &(*key)->len);
     if (ret != SUCCESS) {
+        *key = NULL;
         return ret;
     }
 
     ret = pkt_read_arr(pkt, (*key)->data, (*key)->len);
     if (ret != SUCCESS) {
+        *key = NULL;
         return ret;
     }
     
@@ -340,11 +343,13 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val **val,
 
     *val = azureus_db_val_new();
     if (!(*val)) {
+        *val = NULL;
         return FAILURE;
     }
 
     ret = pkt_read_int(pkt, &(*val)->ver);
     if (ret != SUCCESS) {
+        *val = NULL;
         return ret;
     }
 
@@ -360,6 +365,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val **val,
 
     ret = pkt_read_long(pkt, &(*val)->timestamp);
     if (ret != SUCCESS) {
+        *val = NULL;
         return ret;
     }
 
@@ -367,6 +373,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val **val,
 
     ret = pkt_read_short(pkt, &(*val)->len);
     if (ret != SUCCESS) {
+        *val = NULL;
         return ret;
     }
 
@@ -374,6 +381,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val **val,
 
     ret = pkt_read_arr(pkt, (*val)->data, (*val)->len);
     if (ret != SUCCESS) {
+        *val = NULL;
         return ret;
     }
 
@@ -381,6 +389,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val **val,
 
     ret = azureus_pkt_read_node(pkt, &(*val)->orig_node);
     if (ret != SUCCESS) {
+        *val = NULL;
         return ret;
     }
 
@@ -388,6 +397,7 @@ azureus_pkt_read_db_val(struct pkt *pkt, struct azureus_db_val **val,
 
     ret = pkt_read_byte(pkt, &(*val)->flags);
     if (ret != SUCCESS) {
+        *val = NULL;
         return ret;
     }
 
@@ -434,6 +444,7 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset **valset,
 
     *valset = azureus_db_valset_new();
     if (!(*valset)) {
+        *valset = NULL;
         return FAILURE;
     }
 
@@ -441,6 +452,7 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset **valset,
 
     ret = pkt_read_short(pkt, &(*valset)->n_vals);
     if (ret != SUCCESS) {
+        *valset = NULL;
         return ret;
     }
 
@@ -449,6 +461,7 @@ azureus_pkt_read_db_valset(struct pkt *pkt, struct azureus_db_valset **valset,
     for (i = 0; i < (*valset)->n_vals; i++) {
         ret = azureus_pkt_read_db_val(pkt, &pval, proto_ver);
         if (ret != SUCCESS) {
+            *valset = NULL;
             return ret;
         }
 
