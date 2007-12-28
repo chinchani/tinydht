@@ -49,3 +49,16 @@ task_delete(struct task *task)
     free(task);
 }
 
+size_t 
+task_get_pkt_data_len(struct task *task)
+{
+    struct pkt *pkt = NULL;
+    size_t len = 0;
+
+    TAILQ_FOREACH(pkt, &task->pkt_list, next) {
+        len += pkt->len;
+    }
+
+    return len;
+}
+

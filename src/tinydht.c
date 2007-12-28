@@ -72,6 +72,8 @@ TAILQ_HEAD(task_list_head, task) task_list;
 int n_poll_fds = 0;
 int poll_fd[MAX_POLL_FD];
 
+u64 n_rx_tx = 0;
+
 /*--------------- Private Functions -----------------*/
 
 int tinydht_init(void);
@@ -858,4 +860,36 @@ tinydht_usage(const char *cmd)
 {
     printf("usage: %s -i <interface>\n", cmd);
     return SUCCESS;
+}
+
+/* Rate-limiting */
+void
+tinydht_rate_limit_update(size_t size)
+{
+    n_rx_tx += size;
+}
+
+bool
+tinydht_rate_limit_allow(void)
+{
+    static u64 prev_time = 0;
+    u64 curr_time = 0;
+    u64 elapsed = 0;
+
+    curr_time = dht_get_current_time();
+
+    if (prev_time == 0) {
+        prev_time = curr_time;
+        return TRUE;
+    }
+
+    elapsed = (curr_time - prev_time)/1000;
+
+    //    DEBUG("elapsed %lld size %d len %d\n", elapsed, size, len);
+
+    if ((elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)*(1/8)) < n_rx_tx) {
+        return FALSE;
+    }
+
+    return TRUE;
 }

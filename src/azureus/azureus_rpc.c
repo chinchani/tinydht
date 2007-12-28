@@ -109,23 +109,9 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
     }
 
     switch (msg->action) {
-        case ACT_REPLY_FIND_NODE:
-            TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
-                    next, ann) {
-                TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
-                azureus_node_delete(an);
-            }
-            break;
 
-        case ACT_REPLY_FIND_VALUE:
-            TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
-                    next, ann) {
-                TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
-                azureus_node_delete(an);
-            }
-            break;
+        case ACT_REQUEST_STORE:
 
-        case ACT_REPLY_STORE:
             TAILQ_FOREACH_SAFE(db_key, &msg->m.store_value_req.key_list,
                     next, db_keyn) {
                 TAILQ_REMOVE(&msg->m.store_value_req.key_list, db_key, next);
@@ -137,6 +123,26 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
                 TAILQ_REMOVE(&msg->m.store_value_req.valset_list,
                         db_valset, next);
                 azureus_db_valset_delete(db_valset);
+            }
+
+            break;
+
+        case ACT_REPLY_FIND_NODE:
+
+            TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
+                    next, ann) {
+                TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
+                azureus_node_delete(an);
+            }
+
+            break;
+
+        case ACT_REPLY_FIND_VALUE:
+
+            TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
+                    next, ann) {
+                TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
+                azureus_node_delete(an);
             }
 
             break;

@@ -43,5 +43,6 @@ struct task {
 
 struct task *task_new(struct dht *dht, struct pkt *pkt);
 void task_delete(struct task *task);
+size_t task_get_pkt_data_len(struct task *task);
 
 #endif /* __TASK_H__ */

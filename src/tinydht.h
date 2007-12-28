@@ -38,6 +38,9 @@ struct task_list_head;
 #define MAX_KEY_LEN             32
 #define MAX_VAL_LEN             1024
 
+/* Rate limiting */
+#define RATE_LIMIT_BITS_PER_SEC (5*1024)
+
 enum tinydht_action_type {
     TINYDHT_ACTION_UNKNOWN = 0,
     TINYDHT_ACTION_PUT,
@@ -74,5 +77,7 @@ struct tinydht_msg {
 
 int tinydht_add_poll_fd(int fd);
 int tinydht_add_task(struct task *task);
+void tinydht_rate_limit_update(size_t size);
+bool tinydht_rate_limit_allow(void);
 
 #endif /* __TINYDHT_H__ */

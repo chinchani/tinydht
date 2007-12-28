@@ -67,7 +67,6 @@ static int azureus_dht_get_node_count(struct azureus_dht *ad);
 static int azureus_dht_db_refresh(struct azureus_dht *ad);
 static bool azureus_dht_is_stable(struct azureus_dht *ad);
 static int azureus_dht_task_count(struct azureus_dht *ad);
-static bool azureus_dht_rate_limit_allow(struct task *task);
 static int azureus_dht_add_db_item(struct azureus_dht *ad, 
                                     struct azureus_db_key *db_key, 
                                     struct azureus_db_valset *db_valset);
@@ -301,7 +300,7 @@ azureus_dht_task_schedule(struct dht *dht)
 
             case PKT_DIR_TX:
 
-                if (!azureus_dht_rate_limit_allow(task)) {
+                if (!tinydht_rate_limit_allow()) {
                     rate_limit_allow = FALSE;
                     break;
                 }
@@ -356,6 +355,7 @@ azureus_rpc_tx(struct azureus_dht *ad, struct task *task,
     pkt_dump(&msg->pkt);
 
     ad->stats.net.tx += ret;
+    tinydht_rate_limit_update(ret);
 
     if (!task) {
         return SUCCESS;
@@ -408,6 +408,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     ad = azureus_dht_get_ref(dht);
 
     ad->stats.net.rx += len;
+    tinydht_rate_limit_update(len);
 
     /* decode the rpc msg */
     ret = azureus_rpc_decode(dht, from, fromlen, data, len, &msg);
@@ -892,6 +893,11 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     index = kbucket_index(&ad->this_node->node.id, &an->node.id);
     ASSERT(index < 160);
 
+    /* don't delete the bootstrap node, ever!! */
+    if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
+        return SUCCESS;
+    }
+
     key_dump(&ad->this_node->node.id);
     key_dump(&an->node.id);
     DEBUG("index %d\n", index);
@@ -1244,50 +1250,6 @@ azureus_dht_exit(struct dht *dht)
     azureus_dht_kbucket_stats(ad);
 
     return;
-}
-
-static bool
-azureus_dht_rate_limit_allow(struct task *task)
-{
-    static u64 prev_time = 0;
-    static unsigned size = 0;
-    u64 curr_time = 0;
-    struct pkt *pkt = NULL, *pktn = NULL;
-    u64 elapsed = 0;
-    int len = 0;
-
-    ASSERT(task);
-
-    curr_time = dht_get_current_time();
-
-    len = 0;
-    TAILQ_FOREACH_SAFE(pkt, &task->pkt_list, next, pktn) {
-        len += pkt->len;
-    }
-
-    if (prev_time == 0) {
-        prev_time = curr_time;
-        size += len;
-        return TRUE;
-    }
-
-    elapsed = (curr_time - prev_time)/1000;
-
-//    DEBUG("elapsed %lld size %d len %d\n", elapsed, size, len);
-
-    if ((elapsed*RATE_LIMIT_BITS_PER_SEC/1000) < (size * 8)) {
-        return FALSE;
-    }
-
-    size += len;
-
-    /* reset clock if more than 5 seconds have passed */
-    if (elapsed >= 5*1000) {         
-        size = len;
-        prev_time = curr_time;
-    }
-
-    return TRUE;
 }
 
 static int

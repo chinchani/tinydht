@@ -78,9 +78,7 @@ struct azureus_dht {
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
 #define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
 
-/* Rate limiting */
 #define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
-#define RATE_LIMIT_BITS_PER_SEC (5*1024)
 
 /*-------------------------------------------------------------
  *
