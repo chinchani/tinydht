@@ -885,9 +885,10 @@ tinydht_rate_limit_allow(void)
 
     elapsed = (curr_time - prev_time)/1000;
 
-    //    DEBUG("elapsed %lld size %d len %d\n", elapsed, size, len);
+    DEBUG("elapsed %lld size %lld\n", elapsed, n_rx_tx);
+    DEBUG("result %lld\n", (elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)));
 
-    if ((elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)*(1/8)) < n_rx_tx) {
+    if ((elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)) < (n_rx_tx*8)) {
         return FALSE;
     }
 
