@@ -223,6 +223,7 @@ tinydht_exit(void)
 
     INFO("TinyDHT exiting ...\n");
 
+
     /* shutdown service fds */
     for (i = 0; i < n_svc_fds; i++) {
         close(svc_fds[i]);
@@ -235,7 +236,7 @@ tinydht_exit(void)
     }
 #endif
 
-    return;
+    _Exit(0);
 }
 
 int

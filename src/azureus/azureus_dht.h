@@ -50,7 +50,7 @@ struct azureus_dht {
     struct azureus_node         *bootstrap;
     struct kbucket              kbucket[160];
     u64                         cr_time;
-    TAILQ_HEAD(azureus_new_node_list_head, azureus_node)        new_node_list;
+    u32                         n_tasks;
     TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
 
@@ -76,7 +76,7 @@ struct azureus_dht {
 #define PING_TIMEOUT            ((u64)15*60*1000*1000)          
 /* 15 minutes */
 #define FIND_NODE_TIMEOUT       PING_TIMEOUT
-#define KBUCKET_REFRESH_TIMEOUT PING_TIMEOUT
+#define KBUCKET_REFRESH_TIMEOUT ((u64)60*60*1000*1000)          
 
 #define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
 

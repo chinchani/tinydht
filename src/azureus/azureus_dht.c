@@ -217,6 +217,7 @@ azureus_task_delete(struct task *task)
     ASSERT(an);
 
     TAILQ_REMOVE(&ad->task_list, task, next);
+    ad->n_tasks--;
     DEBUG("Deleted task %p\n", task);
 
     TAILQ_FOREACH_SAFE(pkt, &task->pkt_list, next, pktn) {
@@ -801,6 +802,7 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
     task->retries = MAX_RPC_RETRIES;
 
     TAILQ_INSERT_TAIL(&ad->task_list, task, next);
+    ad->n_tasks++;
     an->task_pending = TRUE;
 
     DEBUG("Added new PING task %p\n", an);
@@ -842,6 +844,7 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
     task->retries = MAX_RPC_RETRIES;
 
     TAILQ_INSERT_TAIL(&ad->task_list, task, next);
+    ad->n_tasks++;
     an->task_pending = TRUE;
 
     DEBUG("Added new FIND_NODE task %p\n", an);
@@ -1010,7 +1013,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 /* create a find_node task */
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }
-
+#if 0
             if (an->alive && ((curr_time - kbucket->last_refresh) 
                                                 > KBUCKET_REFRESH_TIMEOUT)) {
                 /* create a find_node task for random id */
@@ -1019,6 +1022,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 azureus_dht_add_find_node_task(ad, an, &rnd_id);
                 kbucket->last_refresh = curr_time;
             }
+#endif
         }
     }
 

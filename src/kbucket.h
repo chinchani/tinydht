@@ -29,7 +29,6 @@ struct kbucket {
     int         depth;
     int         n_nodes;     /* no. of nodes in this kbucket */
     LIST_HEAD(kbucket_node_list_head, node) node_list;
-    u64         last_refresh;                    
 };
 
 TAILQ_HEAD(kbucket_node_search_list_head, node);
