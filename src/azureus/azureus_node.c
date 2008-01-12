@@ -29,24 +29,24 @@
 #include "types.h"
 #include "debug.h"
 #include "crypto.h"
-
-int azureus_node_count = 0;
+#include "azureus_dht.h"
 
 struct azureus_node *
-azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss)
+azureus_node_new(struct azureus_dht *ad, u8 proto_ver, 
+                    struct sockaddr_storage *ss)
 {
     struct azureus_node *an = NULL;
     struct key k;
     int ret;
 
-    ASSERT(ss);
+    ASSERT(ad && ss);
 
     an = (struct azureus_node *) malloc(sizeof(struct azureus_node));
     if (!an) {
         return NULL;
     }
 
-    azureus_node_count++;
+    ad->stats.mem.node++;
 
     bzero(an, sizeof(struct azureus_node));
 
@@ -55,35 +55,42 @@ azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss)
 
     ret = azureus_node_get_id(&k, &an->ext_addr, proto_ver);
     if (ret != SUCCESS) {
-        azureus_node_delete(an);
-        return NULL;
+        goto err;
     }
 
     /* initialize the base class */
     ret = node_new(&an->node, &k);
     if (ret != SUCCESS) {
-        azureus_node_delete(an);
-        return NULL;
+        goto err;
     }
 
-    /* FIXME: initialize the spoof-id differently */
+    /* FIXME: initialize the spoof-id differently? */
     ret = azureus_node_get_spoof_id(an, &an->rnd_id);
     if (ret != SUCCESS) {
-        azureus_node_delete(an);
-        return NULL;
+        goto err;
     }
 
     an->cr_time = dht_get_current_time();
     an->node_status = AZUREUS_NODE_STATUS_ROUTABLE;
+    an->dht = ad;
 
     return an;
+
+err:
+    azureus_node_delete(an);
+    return NULL;
 }
 
 void
-azureus_node_delete(struct azureus_node *n)
+azureus_node_delete(struct azureus_node *an)
 {
-    free(n);
-    azureus_node_count--;
+    struct azureus_dht *ad = NULL;
+
+    ASSERT(an);
+
+    ad = an->dht;
+    free(an);
+    ad->stats.mem.node--;
 }
 
 int

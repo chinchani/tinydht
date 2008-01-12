@@ -19,13 +19,21 @@
 #ifndef __AZUREUS_DHT_H__
 #define __AZUREUS_DHT_H__
 
+struct azureus_dht;
+
 #include "types.h"
 #include "dht.h"
-#include "task.h"
 #include "kbucket.h"
 #include "queue.h"
 #include "azureus_node.h"
+#include "azureus_task.h"
 #include "azureus_db.h"
+
+struct azureus_dht_mem_stats {
+    u32         rpc_msg;
+    u32         task;
+    u32         node;
+};
 
 struct azureus_dht_net_stats {
     u64         rx;
@@ -51,13 +59,14 @@ struct azureus_dht {
     struct kbucket              kbucket[160];
     u64                         cr_time;
     u32                         n_tasks;
-    TAILQ_HEAD(azureus_task_list_head, task)                    task_list;
-    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)           db_list;
+    TAILQ_HEAD(azureus_task_list_head, azureus_task)    task_list;
+    TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
 
     /* DHT stats */
     struct {
-        struct azureus_dht_net_stats        net;
-        struct azureus_dht_rpc_stats        rpc;
+        struct azureus_dht_mem_stats    mem;
+        struct azureus_dht_net_stats    net;
+        struct azureus_dht_rpc_stats    rpc;
     } stats;
 };
 

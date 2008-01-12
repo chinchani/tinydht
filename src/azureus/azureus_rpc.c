@@ -33,8 +33,6 @@
 #include "azureus_vivaldi.h"
 #include "node.h"
 
-int azureus_rpc_msg_count = 0;
-
 static int is_valid_rpc_action(u32 action);
 static int is_valid_rpc_req_action(u32 action);
 static int is_valid_rpc_rsp_action(u32 action);
@@ -66,7 +64,7 @@ static int azureus_rpc_vivaldi_encode(struct azureus_rpc_msg *msg);
 static int azureus_rpc_vivaldi_decode(struct azureus_rpc_msg *msg);
 
 struct azureus_rpc_msg *
-azureus_rpc_msg_new(struct dht *dht, 
+azureus_rpc_msg_new(struct azureus_dht *ad, 
                     struct sockaddr_storage *ss,
                     size_t sslen,
                     u8 *data, 
@@ -75,17 +73,18 @@ azureus_rpc_msg_new(struct dht *dht,
     struct azureus_rpc_msg *msg = NULL;
     int ret;
 
-    ASSERT(dht && (len >= 0));
+    ASSERT(ad && (len >= 0));
 
     msg = (struct azureus_rpc_msg *) malloc(sizeof(struct azureus_rpc_msg));
     if (!msg) {
         return NULL;
     }
 
-    azureus_rpc_msg_count++;
+    ad->stats.mem.rpc_msg++;
 
     bzero(msg, sizeof(struct azureus_rpc_msg));
-    ret = pkt_new(&msg->pkt, dht, ss, sslen, data, len);
+
+    ret = pkt_new(&msg->pkt, &ad->dht, ss, sslen, data, len);
     if (ret != SUCCESS) {
         goto err;
     }
@@ -100,9 +99,14 @@ err:
 void
 azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 {
+    struct azureus_dht *ad = NULL;
     struct azureus_node *an = NULL, *ann = NULL;
     struct azureus_db_key *db_key = NULL, *db_keyn = NULL;
     struct azureus_db_valset *db_valset = NULL, *db_valsetn = NULL;
+
+    ASSERT(msg);
+
+    ad = azureus_dht_get_ref(msg->pkt.dht);
 
     if (msg->pkt.dir != PKT_DIR_RX) {
         goto out;
@@ -153,11 +157,11 @@ azureus_rpc_msg_delete(struct azureus_rpc_msg *msg)
 
 out:
     free(msg);
-    azureus_rpc_msg_count--;
+    ad->stats.mem.rpc_msg--;
 }
 
 int
-azureus_rpc_encode(struct azureus_rpc_msg *msg)
+azureus_rpc_msg_encode(struct azureus_rpc_msg *msg)
 {
     int ret;
 
@@ -210,7 +214,7 @@ azureus_rpc_encode(struct azureus_rpc_msg *msg)
 }
 
 int 
-azureus_rpc_decode(struct dht *dht, 
+azureus_rpc_msg_decode(struct azureus_dht *ad, 
                     struct sockaddr_storage *from, 
                     size_t fromlen,
                     u8 *data, 
@@ -220,7 +224,7 @@ azureus_rpc_decode(struct dht *dht,
     struct azureus_rpc_msg *msg = NULL;
     int ret;
 
-    msg = azureus_rpc_msg_new(dht, from, fromlen, data, len);
+    msg = azureus_rpc_msg_new(ad, from, fromlen, data, len);
     if (!msg) {
         return FAILURE;
     }
@@ -1212,7 +1216,7 @@ azureus_rpc_find_node_rsp_decode(struct azureus_rpc_msg *msg)
             return ret;
         }
 
-        pazn = azureus_node_new(azn.proto_ver, &azn.ext_addr);
+        pazn = azureus_node_new(ad, azn.proto_ver, &azn.ext_addr);
         if (!pazn) {
             return FAILURE;
         }
@@ -1436,7 +1440,7 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
                 return ret;
             }
 
-            pazn = azureus_node_new(azn.proto_ver, &azn.ext_addr);
+            pazn = azureus_node_new(ad, azn.proto_ver, &azn.ext_addr);
             if (!pazn) {
                 return FAILURE;
             }

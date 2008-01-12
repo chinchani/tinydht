@@ -116,6 +116,7 @@ dht_new(struct dht *dht, unsigned int type,
             dht->put = dht_table[i]->put;
             dht->rpc_rx = dht_table[i]->rpc_rx;
             dht->task_schedule = dht_table[i]->task_schedule;
+            dht->exit = dht_table[i]->exit;
             break;
         }
     }

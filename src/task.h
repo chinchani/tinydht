@@ -37,12 +37,10 @@ struct task {
     struct dht                          *dht;
     struct node                         *node;
     TAILQ_HEAD(pkt_list_head, pkt)      pkt_list;
-    TAILQ_ENTRY(task)                   next;
-    int                                 retries;
 };
 
-struct task *task_new(struct dht *dht, struct pkt *pkt);
-void task_delete(struct task *task);
+int task_new(struct task *task, struct dht *dht, 
+                struct node *node, struct pkt *pkt);
 size_t task_get_pkt_data_len(struct task *task);
 
 #endif /* __TASK_H__ */

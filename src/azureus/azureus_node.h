@@ -22,12 +22,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+struct azureus_dht;
+
 #include "types.h"
 #include "key.h"
 #include "node.h"
 #include "azureus_vivaldi.h"
-
-extern int azureus_node_count;
 
 enum azureus_node_status {
     AZUREUS_NODE_STATUS_BOOTSTRAP = 0x00000000,
@@ -43,12 +43,14 @@ struct azureus_node {
     u8                                  proto_ver;
     u64                                 skew;
     u32                                 rnd_id;         /* anti-spoof */
+    u32                                 my_rnd_id;
     struct azureus_vivaldi_pos          viv_pos[MAX_RPC_VIVALDI_POS];
     bool                                task_pending;
     bool                                alive;
     u64                                 last_ping;
     u64                                 last_find_node;
     int                                 failures;
+    struct azureus_dht                  *dht;
     TAILQ_ENTRY(azureus_node)           next;
 };
 
@@ -63,10 +65,12 @@ azureus_node_get_ref(struct node *node)
     return container_of(node, struct azureus_node, node);
 }
 
-struct azureus_node * azureus_node_new(u8 proto_ver, struct sockaddr_storage *ss);
+struct azureus_node * azureus_node_new(struct azureus_dht *ad, u8 proto_ver, 
+                                        struct sockaddr_storage *ss);
 void azureus_node_delete(struct azureus_node *n);
 
-int azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver);
+int azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, 
+                        u8 proto_ver);
 int azureus_node_get_spoof_id(struct azureus_node *an, u32 *id);
 
 #endif /* AZUREUS_NODE_H__ */

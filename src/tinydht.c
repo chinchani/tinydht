@@ -58,18 +58,18 @@ extern int h_errno;
 /*--------------- Global Variables -----------------*/
 
 char rpc_ifname[IFNAMSIZ];
-int n_rpc_ifs = 0;
+int n_rpc_if = 0;
 struct dht_net_if rpc_if[MAX_DHT_NET_IF];
 
-int n_svc_fds = 0;
+int n_svc_fd = 0;
 int svc_fds[MAX_SERVICE_FD];
 
-int n_dhts = 0;
+int n_dht = 0;
 struct dht *dht[MAX_DHT_INSTANCE];
 
 TAILQ_HEAD(task_list_head, task) task_list;
 
-int n_poll_fds = 0;
+int n_poll_fd = 0;
 int poll_fd[MAX_POLL_FD];
 
 u64 n_rx_tx = 0;
@@ -77,7 +77,7 @@ u64 n_rx_tx = 0;
 /*--------------- Private Functions -----------------*/
 
 int tinydht_init(void);
-void tinydht_exit(void);
+void tinydht_exit(struct dht **pdht, int *p_n_dht);
 int tinydht_init_sighandlers(void);
 static void tinydht_signal_handler(int signum);
 int tinydht_usage(const char *cmd);
@@ -146,7 +146,7 @@ main(int argc, char *argv[])
 
     /* we should never be here!
      * but if we do, cleanup */
-    tinydht_exit();
+    tinydht_exit(dht, &n_dht);
 
     return EXIT_SUCCESS;
 }
@@ -175,14 +175,14 @@ tinydht_init(void)
 
     /* get local ip addr */
     ret = tinydht_get_intf_ip_addrs(rpc_ifname, rpc_if, 
-                                        &n_rpc_ifs, MAX_DHT_NET_IF); 
+                                        &n_rpc_if, MAX_DHT_NET_IF); 
     if (ret != SUCCESS) {
         return EXIT_FAILURE;
     }
 
     count = 0;
 
-    for (i = 0; i < n_rpc_ifs; i++) {
+    for (i = 0; i < n_rpc_if; i++) {
         ret = tinydht_get_intf_ext_ip_addr(&rpc_if[i]);
         if (ret != SUCCESS) {
             /* FIXME: should we abort here? */
@@ -200,7 +200,7 @@ tinydht_init(void)
     TAILQ_INIT(&task_list);
     
     /* instantiate a dht for each rpc intf */
-    for (i = 0; i < n_rpc_ifs; i++) {
+    for (i = 0; i < n_rpc_if; i++) {
         ret = tinydht_add_dht(DHT_TYPE_AZUREUS, &rpc_if[i]);
         if (ret != SUCCESS) {
             return EXIT_FAILURE;
@@ -217,24 +217,23 @@ tinydht_init(void)
 }
 
 void
-tinydht_exit(void)
+tinydht_exit(struct dht **p_dht, int *p_n_dht)
 {
     int i;
 
+    ASSERT(p_dht && p_n_dht);
+
     INFO("TinyDHT exiting ...\n");
 
-
     /* shutdown service fds */
-    for (i = 0; i < n_svc_fds; i++) {
+    for (i = 0; i < n_svc_fd; i++) {
         close(svc_fds[i]);
     }
 
-#if 0
     /* FIXME: shutdown the dht instances */
-    for (i = 0; i < n_dhts; i++) {
-        dht[i]->exit(&dht[i]);
+    for (i = 0; i < *p_n_dht; i++) {
+        p_dht[i]->exit(p_dht[i]);
     }
-#endif
 
     _Exit(0);
 }
@@ -271,7 +270,7 @@ tinydht_signal_handler(int signum)
             exit(0);    /* we cannot trust our memory */
 
         case SIGALRM:   /* timer?       */
-            tinydht_exit();
+            tinydht_exit(dht, &n_dht);
             break;
 
         case SIGHUP:    /* restart      */
@@ -282,7 +281,7 @@ tinydht_signal_handler(int signum)
 
         case SIGINT:    /* exited?      */
         case SIGTERM:   /* exited?      */
-            tinydht_exit();
+            tinydht_exit(dht, &n_dht);
             break;
 
         default:
@@ -429,7 +428,7 @@ tinydht_add_dht(unsigned int type, struct dht_net_if *nif)
             return ret;
         }
 
-        for (i = 0; i < n_dhts; i++) {
+        for (i = 0; i < n_dht; i++) {
             /* don't pick the tinydht service port */
             if (port == TINYDHT_SERVICE) {
                 unique_port = FALSE;
@@ -453,8 +452,8 @@ tinydht_add_dht(unsigned int type, struct dht_net_if *nif)
                 ret = SUCCESS;
                 break;
             }
-            dht[n_dhts] = d;
-            n_dhts++;
+            dht[n_dht] = d;
+            n_dht++;
             ret = SUCCESS;
             break;
         }
@@ -502,8 +501,8 @@ tinydht_init_service(void)
         goto err;
     }
 
-    svc_fds[n_svc_fds] = sock;
-    n_svc_fds++;
+    svc_fds[n_svc_fd] = sock;
+    n_svc_fd++;
 
     INFO("TinyDHT IPv4 service listening on port %hu fd %d\n", 
             TINYDHT_SERVICE, sock);
@@ -540,8 +539,8 @@ tinydht_init_service(void)
         goto err;
     }
 
-    svc_fds[n_svc_fds] = sock;
-    n_svc_fds++;
+    svc_fds[n_svc_fd] = sock;
+    n_svc_fd++;
 
     INFO("TinyDHT IPv6 service listening on port %hu fd %d\n", 
             TINYDHT_SERVICE, sock);
@@ -555,14 +554,14 @@ err:
 int
 tinydht_add_poll_fd(int fd)
 {
-    if (n_poll_fds >= MAX_POLL_FD) {
+    if (n_poll_fd >= MAX_POLL_FD) {
         return FAILURE;
     }
 
     DEBUG("TinyDHT added fd %d to poll\n", fd);
 
-    poll_fd[n_poll_fds] = fd;
-    n_poll_fds++;
+    poll_fd[n_poll_fd] = fd;
+    n_poll_fd++;
 
     return SUCCESS;
 }
@@ -572,7 +571,7 @@ tinydht_find_dht_from_fd(int fd)
 {
     int i;
 
-    for (i = 0; i < n_dhts; i++) {
+    for (i = 0; i < n_dht; i++) {
         if ((dht[i]->net_if.sock == fd)) {
             return dht[i];
         }
@@ -586,7 +585,7 @@ tinydht_is_service_fd(int fd)
 {
     int i;
 
-    for (i = 0; i < n_svc_fds; i++) {
+    for (i = 0; i < n_svc_fd; i++) {
         if (svc_fds[i] == fd) {
             return TRUE;
         }
@@ -610,11 +609,11 @@ tinydht_poll_loop(void)
     int len = 0;
     int sock;
 
-    INFO("TinyDHT polling %d fds\n", n_poll_fds);
+    INFO("TinyDHT polling %d fds\n", n_poll_fd);
 
     bzero(fds, sizeof(fds));
 
-    for (i = 0; i < n_poll_fds; i++) {
+    for (i = 0; i < n_poll_fd; i++) {
         fds[i].fd = poll_fd[i];
         fds[i].events = POLLIN | POLLERR | POLLHUP | POLLNVAL;
     }
@@ -627,7 +626,7 @@ tinydht_poll_loop(void)
         data_avail = FALSE;
         errno = 0;
 
-        ret = poll(fds, n_poll_fds, MAX_POLL_TIMEOUT);
+        ret = poll(fds, n_poll_fd, MAX_POLL_TIMEOUT);
 
         switch (ret) {
             case -1:        /* error */
@@ -648,7 +647,7 @@ tinydht_poll_loop(void)
         }
 
         fd_found = FALSE;
-        for (i = 0; i < n_poll_fds; i++) {
+        for (i = 0; i < n_poll_fd; i++) {
             if (fds[i].revents & POLLIN) {
                 fd_found = TRUE;
                 break;
@@ -723,7 +722,7 @@ tinydht_task_schedule(void)
 
     /* give every dht instance a time slice */
     dht[index]->task_schedule(dht[index]);
-    index = (index + 1) % n_dhts;
+    index = (index + 1) % n_dht;
 
     return SUCCESS;
 }
@@ -813,7 +812,7 @@ tinydht_put(struct tinydht_msg *msg)
         return FAILURE;
     }
 
-    for (i = 0; i < n_dhts; i++) {
+    for (i = 0; i < n_dht; i++) {
         ret = dht[i]->put(dht[i], msg);
         if (ret != SUCCESS) {
             continue;
@@ -840,7 +839,7 @@ tinydht_get(struct tinydht_msg *msg)
         return FAILURE;
     }
 
-    for (i = 0; i < n_dhts; i++) {
+    for (i = 0; i < n_dht; i++) {
         ret = dht[i]->get(dht[i], msg);
         if (ret != SUCCESS) {
             continue;

@@ -22,31 +22,19 @@
 #include "task.h"
 #include "tinydht.h"
 
-struct task *
-task_new(struct dht *dht, struct pkt *pkt)
+int
+task_new(struct task *task, struct dht *dht, struct node *node, struct pkt *pkt)
 {
-    struct task *task = NULL;
-    
-    ASSERT(dht && pkt);
-
-    task = (struct task *) malloc(sizeof(struct task));
-    if (!task) {
-        return NULL;
-    }
+    ASSERT(task && dht && pkt);
 
     bzero(task, sizeof(struct task));
     task->dht = dht;
+    task->node = node;
     task->creation_time = dht_get_current_time();
     TAILQ_INIT(&task->pkt_list);
     TAILQ_INSERT_TAIL(&task->pkt_list, pkt, next);
-    
-    return task;
-}
 
-void
-task_delete(struct task *task)
-{
-    free(task);
+    return SUCCESS;
 }
 
 size_t 

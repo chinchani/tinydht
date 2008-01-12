@@ -29,6 +29,7 @@ kbucket_new(struct kbucket *k)
 
     bzero(k, sizeof(struct kbucket));
     LIST_INIT(&k->node_list);
+    LIST_INIT(&k->ext_node_list);
 
     return SUCCESS;
 }

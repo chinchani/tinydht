@@ -46,8 +46,8 @@ struct pkt {
 };
 
 int pkt_new(struct pkt *pkt, struct dht *dht, 
-                struct sockaddr_storage *ss, size_t sslen, 
-                u8 *data, unsigned int len);
+            struct sockaddr_storage *ss, size_t sslen, 
+            u8 *data, unsigned int len);
 void pkt_reset_data(struct pkt *pkt);
 int pkt_delete(struct pkt *pkt);
 int pkt_sanity(struct pkt *pkt);

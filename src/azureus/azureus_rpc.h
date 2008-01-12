@@ -19,6 +19,8 @@
 #ifndef __AZUREUS_RPC_H__
 #define __AZUREUS_RPC_H__
 
+struct azureus_db_key;
+
 #include "types.h"
 #include "pkt.h"
 #include "queue.h"
@@ -26,8 +28,6 @@
 #include "azureus_db.h"
 #include "azureus_vivaldi.h"
 #include "node.h"
-
-extern int azureus_rpc_msg_count;
 
 enum azureus_protocol_version {
    PROTOCOL_VERSION_2304 = 8,
@@ -224,14 +224,15 @@ azureus_rpc_msg_get_ref(struct pkt *pkt)
     return container_of(pkt, struct azureus_rpc_msg, pkt);
 }
 
-struct azureus_rpc_msg * azureus_rpc_msg_new(struct dht *dht, 
+struct azureus_rpc_msg * azureus_rpc_msg_new(struct azureus_dht *ad, 
                                                 struct sockaddr_storage *from,
                                                 size_t fromlen,
                                                 u8 *data, int len);
 void azureus_rpc_msg_delete(struct azureus_rpc_msg *msg);
 
-int azureus_rpc_encode(struct azureus_rpc_msg *msg);
-int azureus_rpc_decode(struct dht *dht, struct sockaddr_storage *from, 
+int azureus_rpc_msg_encode(struct azureus_rpc_msg *msg);
+int azureus_rpc_msg_decode(struct azureus_dht *ad, 
+                            struct sockaddr_storage *from, 
                             size_t fromlen, u8 *data, int len,
                             struct azureus_rpc_msg **msg);
 bool azureus_rpc_match_req_rsp(struct azureus_rpc_msg *req, 

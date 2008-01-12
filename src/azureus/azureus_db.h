@@ -19,6 +19,9 @@
 #ifndef __AZUREUS_DB_H__
 #define __AZUREUS_DB_H__
 
+struct azureus_db_key;
+struct azureus_rpc_msg;
+
 #include "types.h"
 #include "queue.h"
 #include "azureus_dht.h"
@@ -56,6 +59,7 @@ struct azureus_db_item {
     u64                                 last_refresh;   /* last publish time */
     struct azureus_db_key               *key;
     struct azureus_db_valset            *valset;
+    bool                                is_local;
     TAILQ_ENTRY(azureus_db_item)        db_next;
 };
 

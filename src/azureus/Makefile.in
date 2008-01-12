@@ -47,7 +47,7 @@ LTLIBRARIES = $(noinst_LTLIBRARIES)
 libazureus_la_LIBADD =
 am_libazureus_la_OBJECTS = azureus_rpc.lo azureus_node.lo \
 	azureus_db.lo azureus_dht.lo azureus.lo azureus_rpc_utils.lo \
-	azureus_vivaldi.lo
+	azureus_vivaldi.lo azureus_task.lo
 libazureus_la_OBJECTS = $(am_libazureus_la_OBJECTS)
 DEFAULT_INCLUDES = -I. -I$(top_builddir)@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
@@ -176,10 +176,11 @@ METASOURCES = AUTO
 noinst_LTLIBRARIES = libazureus.la
 libazureus_la_SOURCES = azureus_rpc.c azureus_node.c azureus_db.c \
 			azureus_dht.c  azureus.c azureus_rpc_utils.c \
-			azureus_vivaldi.c 
+			azureus_vivaldi.c azureus_task.c
 
 noinst_HEADERS = azureus_rpc.h azureus_node.h azureus_db.h azureus_dht.h \
-		 azureus.h azureus_rpc_utils.h azureus_vivaldi.h
+		 azureus.h azureus_rpc_utils.h azureus_vivaldi.h \
+		 azureus_task.h
 
 AM_CFLAGS = -W -Wall -g -pg -O0 \
 	    -I$(top_srcdir)/. -I$(top_srcdir)/src -I$(top_srcdir)/src/azureus \
@@ -242,6 +243,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/azureus_node.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/azureus_rpc.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/azureus_rpc_utils.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/azureus_task.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/azureus_vivaldi.Plo@am__quote@
 
 .c.o:
