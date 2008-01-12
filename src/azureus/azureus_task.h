@@ -28,6 +28,7 @@ struct azureus_rpc_msg;
 struct azureus_task {
     struct task         task;
     int                 retries;
+    struct azureus_dht  *dht;
     TAILQ_ENTRY(azureus_task)      next;
 };
 

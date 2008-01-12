@@ -19,6 +19,8 @@
 #ifndef __TASK_H__
 #define __TASK_H__
 
+struct dht;
+
 #include "dht.h"
 #include "pkt.h"
 #include "queue.h"
@@ -34,9 +36,10 @@ struct task {
     enum task_state                     state;
     u64                                 creation_time;
     u64                                 access_time;
-    struct dht                          *dht;
     struct node                         *node;
-    TAILQ_HEAD(pkt_list_head, pkt)      pkt_list;
+    struct pkt                          *pkt;
+    struct task                         *parent;
+    TAILQ_HEAD(child_task_list, task)   child_list;
 };
 
 int task_new(struct task *task, struct dht *dht, 

@@ -42,7 +42,6 @@ struct pkt {
     unsigned int                mark_pos;
     unsigned int                mark_rdlim;
     struct dht                  *dht;
-    TAILQ_ENTRY(pkt)            next;
 };
 
 int pkt_new(struct pkt *pkt, struct dht *dht, 

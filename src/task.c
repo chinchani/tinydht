@@ -28,11 +28,9 @@ task_new(struct task *task, struct dht *dht, struct node *node, struct pkt *pkt)
     ASSERT(task && dht && pkt);
 
     bzero(task, sizeof(struct task));
-    task->dht = dht;
     task->node = node;
     task->creation_time = dht_get_current_time();
-    TAILQ_INIT(&task->pkt_list);
-    TAILQ_INSERT_TAIL(&task->pkt_list, pkt, next);
+    task->pkt = pkt;
 
     return SUCCESS;
 }
@@ -43,9 +41,13 @@ task_get_pkt_data_len(struct task *task)
     struct pkt *pkt = NULL;
     size_t len = 0;
 
+    len += pkt->len;
+
+#if 0
     TAILQ_FOREACH(pkt, &task->pkt_list, next) {
         len += pkt->len;
     }
+#endif
 
     return len;
 }

@@ -43,8 +43,9 @@ extern int errno;
 
 /*********************** Function Prototypes ***********************/
 
-static int azureus_rpc_tx(struct azureus_dht *ad, struct task *task, 
+static int azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task, 
                             struct azureus_rpc_msg *msg);
+
 static int azureus_dht_add_task(struct azureus_dht *ad, 
                             struct azureus_task *at);
 static int azureus_dht_delete_task(struct azureus_dht *ad, 
@@ -53,6 +54,7 @@ static int azureus_dht_add_ping_task(struct azureus_dht *ad,
                             struct azureus_node *an);
 static int azureus_dht_add_find_node_task(struct azureus_dht *ad, 
                             struct azureus_node *an, struct key *node_id);
+
 static int azureus_dht_add_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
 static int azureus_dht_delete_node(struct azureus_dht *ad, 
@@ -62,16 +64,17 @@ static struct azureus_node * azureus_dht_get_node(struct azureus_dht *ad,
                                                 u8 proto_ver);
 static bool azureus_dht_contains_node(struct azureus_dht *ad, 
                                 struct azureus_node *an);
-static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
-static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
+
 static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, 
                                 struct key *key, int k,
                                 struct kbucket_node_search_list_head *list, 
                                 int *n_list);
 static int azureus_dht_get_node_count(struct azureus_dht *ad);
+
+static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
 static int azureus_dht_db_refresh(struct azureus_dht *ad);
+
 static bool azureus_dht_is_stable(struct azureus_dht *ad);
-static int azureus_dht_task_count(struct azureus_dht *ad);
 static int azureus_dht_add_db_item(struct azureus_dht *ad, 
                                     struct azureus_db_key *db_key, 
                                     struct azureus_db_valset *db_valset);
@@ -80,8 +83,11 @@ static int azureus_dht_delete_db_item(struct azureus_dht *ad,
 static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
-static void azureus_dht_db_stats(struct azureus_dht *ad);
 
+static void azureus_dht_summary(struct azureus_dht *ad);
+static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
+static void azureus_dht_db_stats(struct azureus_dht *ad);
+static int azureus_dht_task_count(struct azureus_dht *ad);
 /*********************** Function Definitions ***********************/
 
 struct dht *
@@ -263,7 +269,8 @@ azureus_dht_task_schedule(struct dht *dht)
             continue;
         }
 
-        pkt = TAILQ_FIRST(&task->pkt_list);
+        pkt = task->pkt;
+//        pkt = TAILQ_FIRST(&task->pkt_list);
         msg = azureus_rpc_msg_get_ref(pkt);
 
 //        DEBUG("pkt->dir %d\n", pkt->dir);
@@ -289,7 +296,7 @@ azureus_dht_task_schedule(struct dht *dht)
                     return FAILURE;
                 }
 
-                azureus_rpc_tx(ad, task, msg);
+                azureus_dht_rpc_tx(ad, task, msg);
 
                 break;
 
@@ -302,7 +309,7 @@ azureus_dht_task_schedule(struct dht *dht)
 }
 
 static int
-azureus_rpc_tx(struct azureus_dht *ad, struct task *task, 
+azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task, 
                 struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL;
@@ -531,7 +538,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             return FAILURE;
         }
 
-        azureus_rpc_tx(ad, NULL, rsp);
+        azureus_dht_rpc_tx(ad, NULL, rsp);
 
         azureus_rpc_msg_delete(rsp);
 
@@ -546,7 +553,8 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 continue;
             }
 
-            pkt = TAILQ_FIRST(&task->pkt_list);
+            pkt = task->pkt;
+//            pkt = TAILQ_FIRST(&task->pkt_list);
             msg1 = azureus_rpc_msg_get_ref(pkt);
             if (azureus_rpc_match_req_rsp(msg1, msg)) {
                 found = TRUE;
@@ -773,12 +781,6 @@ azureus_dht_delete_task(struct azureus_dht *ad, struct azureus_task *at)
     struct azureus_rpc_msg *msg = NULL;
 
     ASSERT(ad && at);
-
-    TAILQ_FOREACH_SAFE(pkt, &at->task.pkt_list, next, pktn) {
-        TAILQ_REMOVE(&at->task.pkt_list, pkt, next);
-        msg = azureus_rpc_msg_get_ref(pkt);
-        azureus_rpc_msg_delete(msg);
-    }
 
     TAILQ_REMOVE(&ad->task_list, at, next);
     ad->n_tasks--;
@@ -1260,6 +1262,8 @@ azureus_dht_exit(struct dht *dht)
 
     ad = azureus_dht_get_ref(dht);
 
+    azureus_dht_summary(ad);
+
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureus_rpc_msg_count %d\n", ad->stats.mem.rpc_msg);
     azureus_dht_task_count(ad);
@@ -1347,4 +1351,33 @@ azureus_dht_db_stats(struct azureus_dht *ad)
             pkt_dump_data(v->data, v->len);
         }
     }
+}
+
+static void
+azureus_dht_summary(struct azureus_dht *ad)
+{
+    u64 curr_time = 0;
+    u64 elapsed = 0;
+    u64 hour = 0, min = 0, sec = 0;
+
+    ASSERT(ad);
+
+    curr_time = dht_get_current_time();
+    elapsed = curr_time - ad->cr_time;
+
+    hour = elapsed/(1000*1000) * (1/3600);
+    min = (elapsed/(1000*1000) - hour*3600) * (1/60);
+    sec = elapsed/(1000*1000) - hour*3600 - min*60;
+
+    INFO("uptime: %0llu hours %0llu mins %0llu secs\n", hour, min, sec);
+
+    INFO("mem usage:\n");
+    INFO("\trpc_msg     %d (%d KB)\n", ad->stats.mem.rpc_msg, 
+            ad->stats.mem.rpc_msg*sizeof(struct azureus_rpc_msg)/1024);
+    INFO("\tnode        %d (%d KB)\n", ad->stats.mem.node,
+            ad->stats.mem.node*sizeof(struct azureus_node)/1024);
+    INFO("\ttask        %d (%d KB)\n", ad->stats.mem.task,
+            ad->stats.mem.task*sizeof(struct azureus_task)/1024);
+
+    return;
 }
