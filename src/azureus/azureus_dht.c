@@ -554,7 +554,6 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             }
 
             pkt = task->pkt;
-//            pkt = TAILQ_FIRST(&task->pkt_list);
             msg1 = azureus_rpc_msg_get_ref(pkt);
             if (azureus_rpc_match_req_rsp(msg1, msg)) {
                 found = TRUE;
@@ -777,9 +776,6 @@ azureus_dht_add_task(struct azureus_dht *ad, struct azureus_task *at)
 static int 
 azureus_dht_delete_task(struct azureus_dht *ad, struct azureus_task *at)
 {
-    struct pkt *pkt = NULL, *pktn = NULL;
-    struct azureus_rpc_msg *msg = NULL;
-
     ASSERT(ad && at);
 
     TAILQ_REMOVE(&ad->task_list, at, next);
@@ -889,7 +885,7 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
         an = azureus_node_get_ref(n);
     }
 
-    ret = kbucket_insert_node(&ad->kbucket[index], &an->node);
+    ret = kbucket_insert_node(&ad->kbucket[index], &an->node, AZUREUS_K);
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
@@ -999,7 +995,9 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
         kbucket = &ad->kbucket[index];
 
         LIST_FOREACH_SAFE(node, &kbucket->node_list, kb_next, noden) {
+
             an = azureus_node_get_ref(node);
+
             if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
                 if ((azureus_dht_get_node_count(ad) > 1) 
                         || an->task_pending) {
@@ -1035,6 +1033,21 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 kbucket->last_refresh = curr_time;
             }
 #endif
+        }
+
+        LIST_FOREACH_SAFE(node, &kbucket->ext_node_list, kb_next, noden) {
+
+            an = azureus_node_get_ref(node);
+
+            if (!an->alive && (an->failures < MAX_RPC_FAILURES)) {
+                azureus_dht_add_ping_task(ad, an);
+                continue;
+            }
+
+            if ((curr_time - an->last_ping) > PING_TIMEOUT) {
+                /* create a ping task */
+                azureus_dht_add_ping_task(ad, an);
+            }
         }
     }
 
@@ -1365,11 +1378,12 @@ azureus_dht_summary(struct azureus_dht *ad)
     curr_time = dht_get_current_time();
     elapsed = curr_time - ad->cr_time;
 
-    hour = elapsed/(1000*1000) * (1/3600);
-    min = (elapsed/(1000*1000) - hour*3600) * (1/60);
+    hour = (elapsed/(1000*1000))/3600;
+    min = (elapsed/(1000*1000) - hour*3600)/60;
     sec = elapsed/(1000*1000) - hour*3600 - min*60;
 
-    INFO("uptime: %0llu hours %0llu mins %0llu secs\n", hour, min, sec);
+    INFO("uptime:\n");
+    INFO("\t%0llu hours %0llu mins %0llu secs\n", hour, min, sec);
 
     INFO("mem usage:\n");
     INFO("\trpc_msg     %d (%d KB)\n", ad->stats.mem.rpc_msg, 
@@ -1378,6 +1392,14 @@ azureus_dht_summary(struct azureus_dht *ad)
             ad->stats.mem.node*sizeof(struct azureus_node)/1024);
     INFO("\ttask        %d (%d KB)\n", ad->stats.mem.task,
             ad->stats.mem.task*sizeof(struct azureus_task)/1024);
+
+    INFO("net usage:\n");
+    INFO("\trx          %llu bytes %llu Bps\n", 
+            ad->stats.net.rx, ad->stats.net.rx/elapsed);
+    INFO("\ttx          %llu bytes %llu Bps\n", 
+            ad->stats.net.tx, ad->stats.net.tx/elapsed);
+
+    INFO("rpc stats:\n");
 
     return;
 }

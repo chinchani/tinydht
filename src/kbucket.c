@@ -35,16 +35,21 @@ kbucket_new(struct kbucket *k)
 }
 
 int
-kbucket_insert_node(struct kbucket *k, struct node *n)
+kbucket_insert_node(struct kbucket *k, struct node *n, int max_nodes)
 {
     ASSERT(k && n);
 
     if (kbucket_contains_node(k, n)) {
         return SUCCESS;
     }
-    
-    LIST_INSERT_HEAD(&k->node_list, n, kb_next);
-    k->n_nodes++;
+   
+    if (k->n_nodes < max_nodes) {
+        LIST_INSERT_HEAD(&k->node_list, n, kb_next);
+        k->n_nodes++;
+        return SUCCESS;
+    }
+
+    LIST_INSERT_HEAD(&k->ext_node_list, n, kb_next);
 
     return SUCCESS;
 }
@@ -54,10 +59,23 @@ kbucket_delete_node(struct kbucket *k, struct node *n)
 {
     struct node *tn = NULL, *tnn = NULL;
 
+    ASSERT(k && n);
+
+    /* search the kbucket's node list */
+    /* FIXME: if we remove a node from this list, we have to find a replacement
+     * from the extended node list!! */
     LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
         if (key_cmp(&tn->id, &n->id) == 0) {
             LIST_REMOVE(tn, kb_next);
             k->n_nodes--;
+            return tn;
+        }
+    }
+
+    /* also search the extended node list */
+    LIST_FOREACH_SAFE(tn, &k->ext_node_list, kb_next, tnn) {
+        if (key_cmp(&tn->id, &n->id) == 0) {
+            LIST_REMOVE(tn, kb_next);
             return tn;
         }
     }
@@ -70,7 +88,15 @@ kbucket_contains_node(struct kbucket *k, struct node *n)
 {
     struct node *tn = NULL, *tnn = NULL;
 
+    /* search the kbucket's node list */
     LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
+        if (key_cmp(&tn->id, &n->id) == 0) {
+            return TRUE;
+        }
+    }
+
+    /* also search the extended node list */
+    LIST_FOREACH_SAFE(tn, &k->ext_node_list, kb_next, tnn) {
         if (key_cmp(&tn->id, &n->id) == 0) {
             return TRUE;
         }
@@ -86,7 +112,15 @@ kbucket_get_node(struct kbucket *k, struct key *key)
 
     ASSERT(k && key);
 
+    /* search the kbucket's node list */
     LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
+        if (key_cmp(&tn->id, key) == 0) {
+            return tn;
+        }
+    }
+
+    /* also search the extended node list */
+    LIST_FOREACH_SAFE(tn, &k->ext_node_list, kb_next, tnn) {
         if (key_cmp(&tn->id, key) == 0) {
             return tn;
         }

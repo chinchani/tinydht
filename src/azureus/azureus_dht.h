@@ -73,7 +73,7 @@ struct azureus_dht {
 #define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
 #define DHT_BOOTSTRAP_PORT      6881
 
-#define AZUREUS_K               20      /* minimum no. of nodes in a kbucket */
+#define AZUREUS_K               20      /* max no. of nodes in a kbucket */
 #define AZUREUS_W               4
 
 #define AZUREUS_RPC_TIMEOUT     ((u64)20*1000*1000)
