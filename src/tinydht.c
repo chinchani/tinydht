@@ -203,14 +203,20 @@ tinydht_init(void)
     for (i = 0; i < n_rpc_if; i++) {
         ret = tinydht_add_dht(DHT_TYPE_AZUREUS, &rpc_if[i]);
         if (ret != SUCCESS) {
-            return EXIT_FAILURE;
+            return FAILURE;
         }
+    }
+
+    /* we still don't have any DHT instances */
+    if (n_dht == 0) {
+        ERROR("No DHT instances available\n");
+        return FAILURE;
     }
 
     /* initialize the tinydht service */
     ret = tinydht_init_service();
     if (ret != SUCCESS) {
-        return EXIT_FAILURE;
+        return FAILURE;
     }
 
     return SUCCESS;

@@ -41,10 +41,23 @@ struct azureus_dht_net_stats {
 };
 
 struct azureus_dht_rpc_stats {
-    u64         ping_req_rx;
-    u64         ping_req_tx;
-    u64         ping_rsp_rx;
-    u64         ping_rsp_tx;
+    u32         ping_req_rx;
+    u32         ping_req_tx;
+    u32         ping_rsp_rx;
+    u32         ping_rsp_tx;
+    u32         find_node_req_rx;
+    u32         find_node_req_tx;
+    u32         find_node_rsp_rx;
+    u32         find_node_rsp_tx;
+    u32         find_value_req_rx;
+    u32         find_value_req_tx;
+    u32         find_value_rsp_rx;
+    u32         find_value_rsp_tx;
+    u32         store_value_req_rx;
+    u32         store_value_req_tx;
+    u32         store_value_rsp_rx;
+    u32         store_value_rsp_tx;
+    u32         other_rx;
 };
 
 struct azureus_dht {

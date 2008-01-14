@@ -46,13 +46,12 @@
 
 #define INFO(_fmt, _args...)                                    \
     do {                                                        \
-        printf("[INFO] %s:%d %s() - " _fmt,                     \
-                __FILE__, __LINE__, __FUNCTION__, ##_args);     \
+        printf(_fmt, ##_args);                                  \
     } while (0)
 
-#define DEBUG(_fmt, _args...)                                    \
+#define DEBUG(_fmt, _args...)                                   \
     do {                                                        \
-        printf("[DEBUG] %s:%d %s() - " _fmt,                     \
+        printf("[DEBUG] %s:%d %s() - " _fmt,                    \
                 __FILE__, __LINE__, __FUNCTION__, ##_args);     \
     } while (0)
 

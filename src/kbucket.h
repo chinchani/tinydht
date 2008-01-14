@@ -29,6 +29,7 @@ struct kbucket {
     int         depth;
     int         n_nodes;     /* no. of nodes in this kbucket */
     LIST_HEAD(kbucket_node_list_head, node)     node_list;
+    int         n_ext_nodes;
     LIST_HEAD(kbucket_ext_node_list_head, node) ext_node_list;
 };
 

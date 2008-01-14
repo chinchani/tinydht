@@ -50,6 +50,7 @@ kbucket_insert_node(struct kbucket *k, struct node *n, int max_nodes)
     }
 
     LIST_INSERT_HEAD(&k->ext_node_list, n, kb_next);
+    k->n_ext_nodes++;
 
     return SUCCESS;
 }
@@ -68,6 +69,10 @@ kbucket_delete_node(struct kbucket *k, struct node *n)
         if (key_cmp(&tn->id, &n->id) == 0) {
             LIST_REMOVE(tn, kb_next);
             k->n_nodes--;
+            if (k->n_ext_nodes > 0) {
+                /* FIXME: move a node from extended routing table to main
+                 * routing table */
+            }
             return tn;
         }
     }
@@ -76,6 +81,7 @@ kbucket_delete_node(struct kbucket *k, struct node *n)
     LIST_FOREACH_SAFE(tn, &k->ext_node_list, kb_next, tnn) {
         if (key_cmp(&tn->id, &n->id) == 0) {
             LIST_REMOVE(tn, kb_next);
+            k->n_ext_nodes--;
             return tn;
         }
     }

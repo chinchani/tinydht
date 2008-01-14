@@ -88,6 +88,8 @@ static void azureus_dht_summary(struct azureus_dht *ad);
 static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
 static void azureus_dht_db_stats(struct azureus_dht *ad);
 static int azureus_dht_task_count(struct azureus_dht *ad);
+static void azureus_dht_update_rpc_stats(struct azureus_dht *ad, u32 action, 
+                                enum pkt_dir dir);
 /*********************** Function Definitions ***********************/
 
 struct dht *
@@ -339,7 +341,10 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task,
     pkt_dump(&msg->pkt);
 
     ad->stats.net.tx += ret;
+
     tinydht_rate_limit_update(ret);
+
+    azureus_dht_update_rpc_stats(ad, msg->action, msg->pkt.dir);
 
     if (!task) {
         return SUCCESS;
@@ -393,6 +398,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     ad = azureus_dht_get_ref(dht);
 
     ad->stats.net.rx += len;
+
     tinydht_rate_limit_update(len);
 
     /* decode the rpc msg */
@@ -403,6 +409,8 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     }
 
     msg->pkt.dir = PKT_DIR_RX;
+
+    azureus_dht_update_rpc_stats(ad, msg->action, msg->pkt.dir);
 
     if (msg->is_req) {  /* REQUEST */
 
@@ -1367,6 +1375,75 @@ azureus_dht_db_stats(struct azureus_dht *ad)
 }
 
 static void
+azureus_dht_update_rpc_stats(struct azureus_dht *ad, u32 action, 
+                                enum pkt_dir dir)
+{
+    ASSERT(ad);
+
+    switch (action) {
+        case ACT_REQUEST_PING:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.ping_req_rx++;
+            } else {
+                ad->stats.rpc.ping_req_tx++;
+            }
+            break;
+        case ACT_REPLY_PING:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.ping_rsp_rx++;
+            } else {
+                ad->stats.rpc.ping_rsp_tx++;
+            }
+            break;
+        case ACT_REQUEST_FIND_NODE:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.find_node_req_rx++;
+            } else {
+                ad->stats.rpc.find_node_req_tx++;
+            }
+            break;
+        case ACT_REPLY_FIND_NODE:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.find_node_rsp_rx++;
+            } else {
+                ad->stats.rpc.find_node_rsp_tx++;
+            }
+            break;
+        case ACT_REQUEST_FIND_VALUE:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.find_value_req_rx++;
+            } else {
+                ad->stats.rpc.find_value_req_tx++;
+            }
+            break;
+        case ACT_REPLY_FIND_VALUE:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.find_value_rsp_rx++;
+            } else {
+                ad->stats.rpc.find_value_rsp_tx++;
+            }
+            break;
+        case ACT_REQUEST_STORE:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.store_value_req_rx++;
+            } else {
+                ad->stats.rpc.store_value_req_tx++;
+            }
+            break;
+        case ACT_REPLY_STORE:
+            if (dir == PKT_DIR_RX) {
+                ad->stats.rpc.store_value_rsp_rx++;
+            } else {
+                ad->stats.rpc.store_value_rsp_tx++;
+            }
+            break;
+        default:
+            ad->stats.rpc.other_rx++;
+            break;
+    }
+}
+
+static void
 azureus_dht_summary(struct azureus_dht *ad)
 {
     u64 curr_time = 0;
@@ -1376,11 +1453,11 @@ azureus_dht_summary(struct azureus_dht *ad)
     ASSERT(ad);
 
     curr_time = dht_get_current_time();
-    elapsed = curr_time - ad->cr_time;
+    elapsed = (curr_time - ad->cr_time)/(1000*1000);
 
-    hour = (elapsed/(1000*1000))/3600;
-    min = (elapsed/(1000*1000) - hour*3600)/60;
-    sec = elapsed/(1000*1000) - hour*3600 - min*60;
+    hour = elapsed/3600;
+    min = (elapsed - hour*3600)/60;
+    sec = elapsed - hour*3600 - min*60;
 
     INFO("uptime:\n");
     INFO("\t%0llu hours %0llu mins %0llu secs\n", hour, min, sec);
@@ -1400,6 +1477,22 @@ azureus_dht_summary(struct azureus_dht *ad)
             ad->stats.net.tx, ad->stats.net.tx/elapsed);
 
     INFO("rpc stats:\n");
+    INFO("\tping        req rx %d\n", ad->stats.rpc.ping_req_rx);
+    INFO("\tping        req tx %d\n", ad->stats.rpc.ping_req_tx);
+    INFO("\tping        rsp rx %d\n", ad->stats.rpc.ping_rsp_rx);
+    INFO("\tping        rsp tx %d\n", ad->stats.rpc.ping_rsp_tx);
+    INFO("\tfind node   req rx %d\n", ad->stats.rpc.find_node_req_rx);
+    INFO("\tfind node   req tx %d\n", ad->stats.rpc.find_node_req_tx);
+    INFO("\tfind node   rsp rx %d\n", ad->stats.rpc.find_node_rsp_rx);
+    INFO("\tfind node   rsp tx %d\n", ad->stats.rpc.find_node_rsp_tx);
+    INFO("\tfind value  req rx %d\n", ad->stats.rpc.find_value_req_rx);
+    INFO("\tfind value  req tx %d\n", ad->stats.rpc.find_value_req_tx);
+    INFO("\tfind value  rsp rx %d\n", ad->stats.rpc.find_value_rsp_rx);
+    INFO("\tfind value  rsp tx %d\n", ad->stats.rpc.find_value_rsp_tx);
+    INFO("\tstore value req rx %d\n", ad->stats.rpc.store_value_req_rx);
+    INFO("\tstore value req tx %d\n", ad->stats.rpc.store_value_req_tx);
+    INFO("\tstore value rsp rx %d\n", ad->stats.rpc.store_value_rsp_rx);
+    INFO("\tstore value rsp tx %d\n", ad->stats.rpc.store_value_rsp_tx);
 
     return;
 }
