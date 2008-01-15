@@ -59,6 +59,7 @@ struct node *
 kbucket_delete_node(struct kbucket *k, struct node *n)
 {
     struct node *tn = NULL, *tnn = NULL;
+    struct node *xtn = NULL;
 
     ASSERT(k && n);
 
@@ -66,13 +67,23 @@ kbucket_delete_node(struct kbucket *k, struct node *n)
     /* FIXME: if we remove a node from this list, we have to find a replacement
      * from the extended node list!! */
     LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
+
         if (key_cmp(&tn->id, &n->id) == 0) {
+            
             LIST_REMOVE(tn, kb_next);
             k->n_nodes--;
-            if (k->n_ext_nodes > 0) {
-                /* FIXME: move a node from extended routing table to main
-                 * routing table */
+
+            if (k->n_ext_nodes == 0) {
+                return tn;
             }
+
+            /* move a node from the extended routing table to 
+             * the main routing table */
+            xtn = LIST_FIRST(&k->ext_node_list);
+            LIST_REMOVE(xtn, kb_next);
+            k->n_ext_nodes--;
+            LIST_INSERT_HEAD(&k->node_list, xtn, kb_next);
+            k->n_nodes++;
             return tn;
         }
     }

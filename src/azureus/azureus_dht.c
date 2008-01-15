@@ -84,12 +84,14 @@ static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
 
-static void azureus_dht_summary(struct azureus_dht *ad);
-static void azureus_dht_kbucket_stats(struct azureus_dht *ad);
-static void azureus_dht_db_stats(struct azureus_dht *ad);
-static int azureus_dht_task_count(struct azureus_dht *ad);
 static void azureus_dht_update_rpc_stats(struct azureus_dht *ad, u32 action, 
                                 enum pkt_dir dir);
+
+static void azureus_dht_summary(struct azureus_dht *ad);
+static void azureus_dht_print_routing_table_stats(struct azureus_dht *ad);
+static void azureus_dht_print_task_stats(struct azureus_dht *ad);
+static void azureus_dht_db_stats(struct azureus_dht *ad);
+
 /*********************** Function Definitions ***********************/
 
 struct dht *
@@ -1062,37 +1064,6 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     return SUCCESS;
 }
 
-static void
-azureus_dht_kbucket_stats(struct azureus_dht *ad)
-{
-    int i;
-    struct azureus_node *an = NULL;
-    struct node *node = NULL, *noden = NULL;
-    int total, alive;
-    int bigtotal;
-
-    bigtotal = 0;
-    for (i = 0; i < 160; i++) {
-        total = 0;
-        alive = 0;
-        LIST_FOREACH_SAFE(node, &ad->kbucket[i].node_list, kb_next, noden) {
-            an = azureus_node_get_ref(node);
-            total++;
-            if (an->alive) {
-                alive++;
-            }
-        }
-
-        if (total) {
-            DEBUG("KBUCKET %d total %d alive %d\n", i, total, alive);
-            bigtotal += total;
-        }
-    }
-    DEBUG("KBUCKET bigtotal %d\n", bigtotal);
-
-    return;
-}
-
 static int
 azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                                 struct kbucket_node_search_list_head *list, 
@@ -1138,6 +1109,21 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 return SUCCESS;
             }
         }
+
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, kb_next, tnn) {
+            an = azureus_node_get_ref(tn);
+            if (!an->alive) {
+                continue;
+            }
+
+            TAILQ_INSERT_TAIL(list, tn, next);
+            count++;
+
+            if (count == k) {
+                *n_list = count;
+                return SUCCESS;
+            }
+        }
     }
 
     /* we walk backwards now */
@@ -1148,6 +1134,21 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
         }
 
         LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, kb_next, tnn) {
+            an = azureus_node_get_ref(tn);
+            if (!an->alive) {
+                continue;
+            }
+
+            TAILQ_INSERT_TAIL(list, tn, next);
+            count++;
+
+            if (count == k) {
+                *n_list = count;
+                return SUCCESS;
+            }
+        }
+
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, kb_next, tnn) {
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
@@ -1237,41 +1238,10 @@ azureus_dht_is_stable(struct azureus_dht *ad)
 
     elapsed = (curr_time - ad->cr_time)/(1000*1000);
     DEBUG("stable in %llu seconds\n", elapsed);
-    DEBUG("stable count %d\n", prev_count);
-    azureus_dht_task_count(ad);
-    azureus_dht_kbucket_stats(ad);
-    azureus_dht_db_stats(ad);
-    DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
-    DEBUG("azureus_rpc_msg_count %d\n", ad->stats.mem.rpc_msg);
-    DEBUG("rx (bytes) %llu rx rate (Bps) %llu\n", 
-            ad->stats.net.rx, ad->stats.net.rx/(elapsed));
-    DEBUG("tx (bytes) %llu tx rate (Bps) %llu\n", 
-            ad->stats.net.tx, ad->stats.net.tx/(elapsed));
+
+    azureus_dht_summary(ad);
 
     return TRUE;
-}
-
-static int
-azureus_dht_task_count(struct azureus_dht *ad)
-{
-    struct task *task = NULL;
-    struct azureus_task *at = NULL, *atn = NULL;
-    int count = 0, wt_count = 0;
-
-    ASSERT(ad);
-
-    TAILQ_FOREACH_SAFE(at, &ad->task_list, next, atn) {
-        task = &at->task;
-        count++;
-        if (task->state == TASK_STATE_WAIT) {
-            wt_count++;
-        }
-    }
-
-    DEBUG("task count %d wait count %d active count %d\n", 
-            count, wt_count, (count - wt_count));
-
-    return SUCCESS;
 }
 
 void
@@ -1284,11 +1254,6 @@ azureus_dht_exit(struct dht *dht)
     ad = azureus_dht_get_ref(dht);
 
     azureus_dht_summary(ad);
-
-    DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
-    DEBUG("azureus_rpc_msg_count %d\n", ad->stats.mem.rpc_msg);
-    azureus_dht_task_count(ad);
-    azureus_dht_kbucket_stats(ad);
 
     return;
 }
@@ -1462,6 +1427,7 @@ azureus_dht_summary(struct azureus_dht *ad)
     INFO("uptime:\n");
     INFO("\t%0llu hours %0llu mins %0llu secs\n", hour, min, sec);
 
+    INFO("\n");
     INFO("mem usage:\n");
     INFO("\trpc_msg     %d (%d KB)\n", ad->stats.mem.rpc_msg, 
             ad->stats.mem.rpc_msg*sizeof(struct azureus_rpc_msg)/1024);
@@ -1470,29 +1436,120 @@ azureus_dht_summary(struct azureus_dht *ad)
     INFO("\ttask        %d (%d KB)\n", ad->stats.mem.task,
             ad->stats.mem.task*sizeof(struct azureus_task)/1024);
 
+    INFO("\n");
     INFO("net usage:\n");
     INFO("\trx          %llu bytes %llu Bps\n", 
             ad->stats.net.rx, ad->stats.net.rx/elapsed);
     INFO("\ttx          %llu bytes %llu Bps\n", 
             ad->stats.net.tx, ad->stats.net.tx/elapsed);
 
+    INFO("\n");
     INFO("rpc stats:\n");
     INFO("\tping        req rx %d\n", ad->stats.rpc.ping_req_rx);
+    INFO("\tping        rsp tx %d\n", ad->stats.rpc.ping_rsp_tx);
     INFO("\tping        req tx %d\n", ad->stats.rpc.ping_req_tx);
     INFO("\tping        rsp rx %d\n", ad->stats.rpc.ping_rsp_rx);
-    INFO("\tping        rsp tx %d\n", ad->stats.rpc.ping_rsp_tx);
     INFO("\tfind node   req rx %d\n", ad->stats.rpc.find_node_req_rx);
+    INFO("\tfind node   rsp tx %d\n", ad->stats.rpc.find_node_rsp_tx);
     INFO("\tfind node   req tx %d\n", ad->stats.rpc.find_node_req_tx);
     INFO("\tfind node   rsp rx %d\n", ad->stats.rpc.find_node_rsp_rx);
-    INFO("\tfind node   rsp tx %d\n", ad->stats.rpc.find_node_rsp_tx);
     INFO("\tfind value  req rx %d\n", ad->stats.rpc.find_value_req_rx);
+    INFO("\tfind value  rsp tx %d\n", ad->stats.rpc.find_value_rsp_tx);
     INFO("\tfind value  req tx %d\n", ad->stats.rpc.find_value_req_tx);
     INFO("\tfind value  rsp rx %d\n", ad->stats.rpc.find_value_rsp_rx);
-    INFO("\tfind value  rsp tx %d\n", ad->stats.rpc.find_value_rsp_tx);
     INFO("\tstore value req rx %d\n", ad->stats.rpc.store_value_req_rx);
+    INFO("\tstore value rsp tx %d\n", ad->stats.rpc.store_value_rsp_tx);
     INFO("\tstore value req tx %d\n", ad->stats.rpc.store_value_req_tx);
     INFO("\tstore value rsp rx %d\n", ad->stats.rpc.store_value_rsp_rx);
-    INFO("\tstore value rsp tx %d\n", ad->stats.rpc.store_value_rsp_tx);
+    INFO("\tother           rx %d\n", ad->stats.rpc.other_rx);
+
+    INFO("\n");
+    INFO("routing table:\n");
+    azureus_dht_print_routing_table_stats(ad);
+
+    INFO("\n");
+    INFO("tasks:\n");
+    azureus_dht_print_task_stats(ad);
 
     return;
 }
+
+static void
+azureus_dht_print_routing_table_stats(struct azureus_dht *ad)
+{
+    int i;
+    struct azureus_node *an = NULL;
+    struct node *node = NULL, *noden = NULL;
+    int total, alive;
+    int ext_total, ext_alive;
+    int bigtotal;
+    int ext_bigtotal;
+
+    ASSERT(ad);
+
+    bigtotal = 0;
+    ext_bigtotal = 0;
+
+    for (i = 0; i < 160; i++) {
+
+        total = 0;
+        alive = 0;
+
+        LIST_FOREACH_SAFE(node, &ad->kbucket[i].node_list, kb_next, noden) {
+            an = azureus_node_get_ref(node);
+            total++;
+            if (an->alive) {
+                alive++;
+            }
+        }
+
+        ext_total = 0;
+        ext_alive = 0;
+
+        LIST_FOREACH_SAFE(node, &ad->kbucket[i].ext_node_list, kb_next, noden) {
+            an = azureus_node_get_ref(node);
+            ext_total++;
+            if (an->alive) {
+                ext_alive++;
+            }
+        }
+
+        if (total) {
+            INFO("\tkbucket #%3d  (M) total %2d alive %2d   "
+                    "(E) total %3d alive %3d\n", 
+                    i, total, alive, ext_total, ext_alive);
+            bigtotal += total;
+            ext_bigtotal = ext_total;
+        }
+    }
+
+    INFO("\n");
+    INFO("\tkbucket total %d      (M) total %d    (E) total %d\n", 
+            bigtotal, ext_bigtotal, bigtotal + ext_bigtotal);
+
+    return;
+}
+
+static void
+azureus_dht_print_task_stats(struct azureus_dht *ad)
+{
+    struct task *task = NULL;
+    struct azureus_task *at = NULL, *atn = NULL;
+    int count = 0, wt_count = 0;
+
+    ASSERT(ad);
+
+    TAILQ_FOREACH_SAFE(at, &ad->task_list, next, atn) {
+        task = &at->task;
+        count++;
+        if (task->state == TASK_STATE_WAIT) {
+            wt_count++;
+        }
+    }
+
+    INFO("\ttask total %d         new %d  wait %d\n", 
+            count, (count - wt_count), wt_count);
+
+    return;
+}
+
