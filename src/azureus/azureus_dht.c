@@ -46,6 +46,8 @@ extern int errno;
 static int azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task, 
                             struct azureus_rpc_msg *msg);
 
+
+static bool azureus_dht_allow_add_task(struct azureus_dht *ad);
 static int azureus_dht_add_task(struct azureus_dht *ad, 
                             struct azureus_task *at);
 static int azureus_dht_delete_task(struct azureus_dht *ad, 
@@ -418,6 +420,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
         an = azureus_dht_get_node(ad, &msg->pkt.ss, msg->u.udp_req.proto_ver);
         if (!an) {
+            /* new node */
             an = azureus_node_new(ad, msg->u.udp_req.proto_ver, &msg->pkt.ss);
             if (!an) {
                 azureus_rpc_msg_delete(msg);
@@ -426,6 +429,12 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
             azureus_dht_add_node(ad, an);
             DEBUG("Added new node %p\n", an);
+
+        } else {
+            /* node exists */
+            if (an->alive) {
+                an->last_ping = timestamp;
+            }
         }
 
         /* prepare a response for the request */
@@ -773,6 +782,19 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     return SUCCESS;
 }
 
+
+static bool 
+azureus_dht_allow_add_task(struct azureus_dht *ad)
+{
+    ASSERT(ad);
+
+    if (ad->n_tasks < MAX_OUTSTANDING_TASKS) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 static int 
 azureus_dht_add_task(struct azureus_dht *ad, struct azureus_task *at)
 {
@@ -803,6 +825,10 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
     struct azureus_task *at = NULL;
 
     ASSERT(ad && an);
+
+    if (!azureus_dht_allow_add_task(ad)) {
+        return FAILURE;
+    }
 
     if ((ad->bootstrap != an) && an->task_pending) {
         return FAILURE;
@@ -838,6 +864,10 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
     struct azureus_task *at = NULL;
 
     ASSERT(ad && an && node_id);
+
+    if (!azureus_dht_allow_add_task(ad)) {
+        return FAILURE;
+    }
 
     if ((ad->bootstrap != an) && an->task_pending) {
         return FAILURE;
@@ -1425,7 +1455,7 @@ azureus_dht_summary(struct azureus_dht *ad)
     sec = elapsed - hour*3600 - min*60;
 
     INFO("uptime:\n");
-    INFO("\t%0llu hours %0llu mins %0llu secs\n", hour, min, sec);
+    INFO("\t%0llu hour(s) %0llu min(s) %0llu sec(s)\n", hour, min, sec);
 
     INFO("\n");
     INFO("mem usage:\n");
@@ -1514,18 +1544,20 @@ azureus_dht_print_routing_table_stats(struct azureus_dht *ad)
             }
         }
 
-        if (total) {
-            INFO("\tkbucket #%3d  (M) total %2d alive %2d   "
-                    "(E) total %3d alive %3d\n", 
-                    i, total, alive, ext_total, ext_alive);
-            bigtotal += total;
-            ext_bigtotal = ext_total;
+        if (!total) {
+            continue;
         }
+
+        INFO("\tkbucket #%3d  (M) total %2d alive %2d   "
+                "(E) total %3d alive %3d\n", 
+                i, total, alive, ext_total, ext_alive);
+        bigtotal += total;
+        ext_bigtotal += ext_total;
     }
 
     INFO("\n");
     INFO("\tkbucket total %d      (M) total %d    (E) total %d\n", 
-            bigtotal, ext_bigtotal, bigtotal + ext_bigtotal);
+            bigtotal + ext_bigtotal, bigtotal, ext_bigtotal);
 
     return;
 }
@@ -1553,3 +1585,37 @@ azureus_dht_print_task_stats(struct azureus_dht *ad)
     return;
 }
 
+/* Rate-limiting */
+void
+azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size)
+{
+    ASSERT(ad);
+
+    ad->n_rx_tx += size;
+}
+
+bool
+azureus_dht_tinydht_rate_limit_allow(struct azureus_dht *ad)
+{
+    static u64 prev_time = 0;
+    u64 curr_time = 0;
+    u64 elapsed = 0;
+
+    curr_time = dht_get_current_time();
+
+    if (prev_time == 0) {
+        prev_time = curr_time;
+        return TRUE;
+    }
+
+    elapsed = (curr_time - prev_time)/1000;
+
+    // DEBUG("elapsed %lld size %lld\n", elapsed, n_rx_tx);
+    // DEBUG("result %lld\n", (elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)));
+
+    if ((elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)) < (ad->n_rx_tx*8)) {
+        return FALSE;
+    }
+
+    return TRUE;
+}

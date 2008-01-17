@@ -71,6 +71,7 @@ struct azureus_dht {
     struct azureus_node         *bootstrap;
     struct kbucket              kbucket[160];
     u64                         cr_time;
+    u64                         n_rx_tx;
     u32                         n_tasks;
     TAILQ_HEAD(azureus_task_list_head, azureus_task)    task_list;
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
@@ -94,6 +95,8 @@ struct azureus_dht {
 
 #define MAX_RPC_RETRIES         0
 #define MAX_RPC_FAILURES        3
+
+#define MAX_OUTSTANDING_TASKS   128
 
 #define PING_TIMEOUT            ((u64)15*60*1000*1000)          
 /* 15 minutes */
