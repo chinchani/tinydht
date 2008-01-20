@@ -79,7 +79,8 @@ static int azureus_dht_db_refresh(struct azureus_dht *ad);
 static bool azureus_dht_is_stable(struct azureus_dht *ad);
 static int azureus_dht_add_db_item(struct azureus_dht *ad, 
                                     struct azureus_db_key *db_key, 
-                                    struct azureus_db_valset *db_valset);
+                                    struct azureus_db_valset *db_valset,
+                                    bool is_local);
 static int azureus_dht_delete_db_item(struct azureus_dht *ad, 
                                         struct azureus_db_key *db_key);
 static struct azureus_db_item * azureus_dht_find_db_item(
@@ -93,6 +94,11 @@ static void azureus_dht_summary(struct azureus_dht *ad);
 static void azureus_dht_print_routing_table_stats(struct azureus_dht *ad);
 static void azureus_dht_print_task_stats(struct azureus_dht *ad);
 static void azureus_dht_db_stats(struct azureus_dht *ad);
+
+
+static void azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size, 
+                                enum pkt_dir pkt_dir);
+static bool azureus_dht_tinydht_rate_limit_allow(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -346,7 +352,7 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task,
 
     ad->stats.net.tx += ret;
 
-    tinydht_rate_limit_update(ret);
+    azureus_dht_rate_limit_update(ad, ret, PKT_DIR_TX);
 
     azureus_dht_update_rpc_stats(ad, msg->action, msg->pkt.dir);
 
@@ -403,7 +409,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
     ad->stats.net.rx += len;
 
-    tinydht_rate_limit_update(len);
+    azureus_dht_rate_limit_update(ad, len, PKT_DIR_RX);
 
     /* decode the rpc msg */
     ret = azureus_rpc_msg_decode(ad, from, fromlen, data, len, &msg);
@@ -535,7 +541,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                         break;
                     }
 
-                    ret = azureus_dht_add_db_item(ad, db_key, db_valset);
+                    ret = azureus_dht_add_db_item(ad, db_key, db_valset, FALSE);
                     if (ret != SUCCESS) {
                         break;
                     }
@@ -713,8 +719,8 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
         return FAILURE;
     }
 
-    k->len = msg->req.key_len;
-    memcpy(k->data, msg->req.key, msg->req.key_len);
+    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, k->data);
+    k->len = MAX_KEY_SIZE;
 
     vs = azureus_db_valset_new();
     if (!vs) {
@@ -731,12 +737,19 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
     memcpy(v->data, msg->req.val, msg->req.val_len);
     TAILQ_INSERT_TAIL(&vs->val_list, v, next);
 
+    ret = azureus_dht_add_db_item(ad, k, vs, TRUE);
+    if (ret != SUCCESS) {
+        return FAILURE;
+    }
+
+#if 0
     item = azureus_db_item_new(ad, k, vs);
     if (!item) {
         azureus_db_item_delete(item);
     }
 
     TAILQ_INSERT_TAIL(&ad->db_list, item, db_next);
+#endif
 
     DEBUG("PUT successful\n");
 
@@ -748,7 +761,8 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 {
     struct azureus_db_item *item = NULL;
     struct azureus_dht *ad = NULL;
-    struct azureus_db_val *v = NULL;
+    struct azureus_db_val *val = NULL;
+    struct azureus_db_key key;
     size_t off;
 
     DEBUG("GET received\n");
@@ -762,20 +776,21 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     }
 
     ad = azureus_dht_get_ref(dht);
-#if 0
-    TAILQ_FOREACH(item, &ad->db_list, db_next) {
-        if (azureus_db_item_match_key(item, msg->req.key, msg->req.key_len)) {
-            off = 0;
-            TAILQ_FOREACH(v, &item->valset->val_list, next) {
-                memcpy(&msg->rsp.val[off], v->data, v->len);
-                off += v->len;
-            }
-            msg->rsp.val_len = off;
-            DEBUG("GET successful\n");
-            return SUCCESS;
-        }
+
+    bzero(&key, sizeof(struct azureus_db_key));
+    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, key.data);
+    key.len = MAX_KEY_SIZE;
+
+    item = azureus_dht_find_db_item(ad, &key);
+    if (!item) {
+        return FAILURE;
     }
-#endif
+
+    /* we expect only one value per key today */
+    val = TAILQ_FIRST(&item->valset->val_list);
+
+    memcpy(msg->rsp.val, val->data, val->len);
+    msg->rsp.val_len = val->len;
 
     DEBUG("GET successful\n");
 
@@ -1290,7 +1305,7 @@ azureus_dht_exit(struct dht *dht)
 
 static int
 azureus_dht_add_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key, 
-                        struct azureus_db_valset *db_valset)
+                        struct azureus_db_valset *db_valset, bool is_local)
 {
     struct azureus_db_item *db_item = NULL;
 
@@ -1303,6 +1318,8 @@ azureus_dht_add_db_item(struct azureus_dht *ad, struct azureus_db_key *db_key,
     if (!db_item) {
         return FAILURE;
     }
+
+    db_item->is_local = is_local;
 
     TAILQ_INSERT_TAIL(&ad->db_list, db_item, db_next);
     DEBUG("Added new db item %p\n", db_item);
@@ -1586,20 +1603,42 @@ azureus_dht_print_task_stats(struct azureus_dht *ad)
 }
 
 /* Rate-limiting */
-void
-azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size)
+static void
+azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size, 
+                                enum pkt_dir pkt_dir)
 {
     ASSERT(ad);
 
-    ad->n_rx_tx += size;
+    tinydht_rate_limit_update(size);
+
+    switch (pkt_dir) {
+
+        case PKT_DIR_TX:
+            ad->stats.net.tx += size;
+            break;
+
+        case PKT_DIR_RX:
+            ad->stats.net.rx += size;
+            break;
+
+        default:
+            ASSERT(0);
+    }
+
+    return;
 }
 
-bool
+static bool
 azureus_dht_tinydht_rate_limit_allow(struct azureus_dht *ad)
 {
     static u64 prev_time = 0;
     u64 curr_time = 0;
     u64 elapsed = 0;
+    u64 n_rx_tx = 0;
+
+    if (!tinydht_rate_limit_allow()) {
+        return FALSE;
+    }
 
     curr_time = dht_get_current_time();
 
@@ -1612,8 +1651,10 @@ azureus_dht_tinydht_rate_limit_allow(struct azureus_dht *ad)
 
     // DEBUG("elapsed %lld size %lld\n", elapsed, n_rx_tx);
     // DEBUG("result %lld\n", (elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)));
+    
+    n_rx_tx = ad->stats.net.rx + ad->stats.net.tx;
 
-    if ((elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)) < (ad->n_rx_tx*8)) {
+    if ((elapsed*(RATE_LIMIT_BITS_PER_SEC/1000)) < (n_rx_tx*8)) {
         return FALSE;
     }
 

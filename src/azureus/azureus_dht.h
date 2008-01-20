@@ -71,7 +71,6 @@ struct azureus_dht {
     struct azureus_node         *bootstrap;
     struct kbucket              kbucket[160];
     u64                         cr_time;
-    u64                         n_rx_tx;
     u32                         n_tasks;
     TAILQ_HEAD(azureus_task_list_head, azureus_task)    task_list;
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
@@ -104,6 +103,8 @@ struct azureus_dht {
 #define KBUCKET_REFRESH_TIMEOUT ((u64)60*60*1000*1000)          
 
 #define DHT_STABLE_TEST_WINDOW  AZUREUS_RPC_TIMEOUT
+
+#define AZUREUS_RATE_LIMIT_BITS_PER_SEC (4*1024)
 
 /*-------------------------------------------------------------
  *

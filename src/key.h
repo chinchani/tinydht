@@ -21,7 +21,7 @@
 
 #include "types.h"
 
-#define KEY_MAX_SIZE        20
+#define MAX_KEY_SIZE        20
 
 enum key_type {
     KEY_TYPE_UNKNOWN = 0,
@@ -32,7 +32,7 @@ enum key_type {
 
 struct key {
     enum key_type   type;
-    u8              data[KEY_MAX_SIZE];
+    u8              data[MAX_KEY_SIZE];
     int             len;
 };
 
