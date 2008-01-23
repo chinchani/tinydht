@@ -52,11 +52,21 @@ static int azureus_dht_add_task(struct azureus_dht *ad,
                             struct azureus_task *at);
 static int azureus_dht_delete_task(struct azureus_dht *ad, 
                             struct azureus_task *at);
-static int azureus_dht_add_ping_task(struct azureus_dht *ad, 
+static struct azureus_task * azureus_dht_add_ping_task(struct azureus_dht *ad, 
                             struct azureus_node *an);
-static int azureus_dht_add_find_node_task(struct azureus_dht *ad, 
-                            struct azureus_node *an, struct key *node_id);
+static struct azureus_task * azureus_dht_add_find_node_task(
+                                                    struct azureus_dht *ad, 
+                                                    struct azureus_node *an, 
+                                                    struct key *node_id);
 
+static struct azureus_task * azureus_dht_add_find_value_task(
+                                                    struct azureus_dht *ad, 
+                                                    struct azureus_node *an, 
+                                                    struct azureus_db_key *key);
+static struct azureus_task * azureus_dht_add_store_value_task(
+                                                    struct azureus_dht *ad, 
+                                                    struct azureus_node *an, 
+                                                    struct azureus_db_key *key);
 static int azureus_dht_add_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
 static int azureus_dht_delete_node(struct azureus_dht *ad, 
@@ -98,7 +108,7 @@ static void azureus_dht_db_stats(struct azureus_dht *ad);
 
 static void azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size, 
                                 enum pkt_dir pkt_dir);
-static bool azureus_dht_tinydht_rate_limit_allow(struct azureus_dht *ad);
+static bool azureus_dht_rate_limit_allow(struct azureus_dht *ad);
 
 /*********************** Function Definitions ***********************/
 
@@ -295,7 +305,7 @@ azureus_dht_task_schedule(struct dht *dht)
 
             case PKT_DIR_TX:
 
-                if (!tinydht_rate_limit_allow()) {
+                if (!azureus_dht_rate_limit_allow(ad)) {
                     rate_limit_allow = FALSE;
                     break;
                 }
@@ -350,7 +360,7 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task,
 
     pkt_dump(&msg->pkt);
 
-    ad->stats.net.tx += ret;
+//    ad->stats.net.tx += ret;
 
     azureus_dht_rate_limit_update(ad, ret, PKT_DIR_TX);
 
@@ -407,7 +417,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
     ad = azureus_dht_get_ref(dht);
 
-    ad->stats.net.rx += len;
+//    ad->stats.net.rx += len;
 
     azureus_dht_rate_limit_update(ad, len, PKT_DIR_RX);
 
@@ -605,12 +615,15 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 break;
 
             case ACT_REPLY_FIND_NODE:
-                /* if the reply contained new nodes, 
-                 * add them to the new node list */
 
                 an->my_rnd_id = msg->m.find_node_rsp.rnd_id;
 
                 DEBUG("number of nodes %d\n", msg->m.find_node_rsp.n_nodes);
+
+                /* FIXME: we could have a 'parent' find value task
+                 * - add the nodes to the parent task
+                 */
+
                 TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
                                                                     next, ann) {
                     TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
@@ -628,8 +641,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 break;
 
             case ACT_REPLY_FIND_VALUE:
-                /* if the reply contained new nodes, 
-                 * add them to the new node list */
+
                 TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
                                                                     next, ann) {
                     TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
@@ -703,16 +715,6 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
     }
 
     ad = azureus_dht_get_ref(dht);
-#if 0
-    /* delete a duplicate! */
-    TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
-        if (azureus_db_item_match_key(item, msg->req.key, msg->req.key_len)) {
-            DEBUG("key already exists - deleting item\n");
-            azureus_db_item_delete(item);
-            break;
-        }
-    }
-#endif
 
     k = azureus_db_key_new();
     if (!k) {
@@ -742,15 +744,6 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
         return FAILURE;
     }
 
-#if 0
-    item = azureus_db_item_new(ad, k, vs);
-    if (!item) {
-        azureus_db_item_delete(item);
-    }
-
-    TAILQ_INSERT_TAIL(&ad->db_list, item, db_next);
-#endif
-
     DEBUG("PUT successful\n");
 
     return SUCCESS;
@@ -763,7 +756,6 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     struct azureus_dht *ad = NULL;
     struct azureus_db_val *val = NULL;
     struct azureus_db_key key;
-    size_t off;
 
     DEBUG("GET received\n");
 
@@ -833,7 +825,7 @@ azureus_dht_delete_task(struct azureus_dht *ad, struct azureus_task *at)
     return SUCCESS;
 }
 
-static int
+static struct azureus_task *
 azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
 {
     struct azureus_rpc_msg *msg = NULL;
@@ -842,17 +834,17 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
     ASSERT(ad && an);
 
     if (!azureus_dht_allow_add_task(ad)) {
-        return FAILURE;
+        return NULL;
     }
 
     if ((ad->bootstrap != an) && an->task_pending) {
-        return FAILURE;
+        return NULL;
     }
 
     msg = azureus_rpc_msg_new(ad, &an->ext_addr, 
                                 sizeof(struct sockaddr_storage), NULL, 0);
     if (!msg) {
-        return FAILURE;
+        return NULL;
     }
 
     msg->action = ACT_REQUEST_PING;
@@ -861,17 +853,17 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
     at = azureus_task_new(ad, an, msg);
     if (!at) {
         azureus_rpc_msg_delete(msg);
-        return FAILURE;
+        return NULL;
     }
 
     azureus_dht_add_task(ad, at);
 
     DEBUG("Added new PING task %p\n", an);
 
-    return SUCCESS;
+    return at;
 }
 
-static int
+static struct azureus_task *
 azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
                                     struct key *node_id)
 {
@@ -881,17 +873,17 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
     ASSERT(ad && an && node_id);
 
     if (!azureus_dht_allow_add_task(ad)) {
-        return FAILURE;
+        return NULL;
     }
 
     if ((ad->bootstrap != an) && an->task_pending) {
-        return FAILURE;
+        return NULL;
     }
 
     msg = azureus_rpc_msg_new(ad, &an->ext_addr, 
                                 sizeof(struct sockaddr_storage), NULL, 0);
     if (!msg) {
-        return FAILURE;
+        return NULL;
     }
 
     msg->action = ACT_REQUEST_FIND_NODE;
@@ -903,12 +895,75 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
     at = azureus_task_new(ad, an, msg);
     if (!at) {
         azureus_rpc_msg_delete(msg);
-        return FAILURE;
+        return NULL;
     }
 
     azureus_dht_add_task(ad, at);
 
     DEBUG("Added new FIND_NODE task %p\n", an);
+
+    return at;
+}
+
+static struct azureus_task *
+azureus_dht_add_find_value_task(struct azureus_dht *ad, 
+                                struct azureus_node *an,
+                                struct azureus_db_key *db_key)
+{
+    struct azureus_rpc_msg *msg = NULL;
+    struct kbucket_node_search_list_head list;
+    struct azureus_node *ann = NULL;
+    struct node *tn = NULL;
+    struct azureus_task *at = NULL, *fnat = NULL;
+    int n_list = 0;
+    struct key key;
+    int ret;
+
+    ASSERT(ad && an && db_key);
+
+    if (!an->alive) {
+        return NULL;
+    }
+
+    if (ad->bootstrap == an) {
+        return NULL;
+    }
+
+    ret = key_new(&key, KEY_TYPE_SHA1, db_key->data, db_key->len);
+    if (ret != SUCCESS) {
+        return NULL;
+    }
+
+    at = azureus_task_new(ad, an, msg);
+    if (!at) {
+        return NULL;
+    }
+
+    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, &list, &n_list);
+    /* FIXME: We need nodes which are at least PROTO_FIND_VALUE */
+
+    /* Add a find value task on each of these tasks, and make
+     * this task a parent task for each of these tasks.
+     *
+     * Once those tasks complete, accumulate the nodes. If we reach a point
+     * where no new nodes can be accumulated, then we can do a find value on
+     * the 20 closest nodes! */
+
+    TAILQ_FOREACH(tn, &list, next) {
+        ann = azureus_node_get_ref(tn);
+        fnat = azureus_dht_add_find_node_task(ad, ann, &key);
+        fnat->task.parent = at;
+    }
+
+    return at;
+}
+
+static struct azureus_task *
+azureus_dht_add_store_value_task(struct azureus_dht *ad, 
+                                    struct azureus_node *an, 
+                                    struct azureus_db_key *key)
+{
+    struct azureus_rpc_msg *msg = NULL;
 
     return SUCCESS;
 }
@@ -1235,10 +1290,18 @@ azureus_dht_get_node_count(struct azureus_dht *ad)
 static int
 azureus_dht_db_refresh(struct azureus_dht *ad)
 {
+    struct azureus_db_item *item = NULL, *itemn = NULL;
+
     ASSERT(ad);
 
     if (!azureus_dht_is_stable(ad)) {
         return FAILURE;
+    }
+
+    TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
+        if (!item->is_local) {
+            continue;
+        }
     }
 
     return SUCCESS;
@@ -1629,7 +1692,7 @@ azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size,
 }
 
 static bool
-azureus_dht_tinydht_rate_limit_allow(struct azureus_dht *ad)
+azureus_dht_rate_limit_allow(struct azureus_dht *ad)
 {
     static u64 prev_time = 0;
     u64 curr_time = 0;

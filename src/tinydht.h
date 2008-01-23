@@ -39,7 +39,7 @@ struct task_list_head;
 #define MAX_VAL_LEN             1024
 
 /* Rate limiting */
-#define RATE_LIMIT_BITS_PER_SEC (4*1024)
+#define RATE_LIMIT_BITS_PER_SEC (8*1024)
 
 enum tinydht_action_type {
     TINYDHT_ACTION_UNKNOWN = 0,
