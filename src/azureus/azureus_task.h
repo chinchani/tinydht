@@ -24,12 +24,15 @@ struct azureus_rpc_msg;
 #include "task.h"
 #include "azureus_dht.h"
 #include "azureus_node.h"
+#include "azureus_db.h"
 
 struct azureus_task {
-    struct task         task;
-    int                 retries;
-    struct azureus_dht  *dht;
-    TAILQ_ENTRY(azureus_task)      next;
+    struct task                 task;
+    int                         retries;
+    struct azureus_dht          *dht;
+    struct azureus_db_item      *db_item;
+    TAILQ_ENTRY(azureus_task)   next;
+    TAILQ_HEAD(azureus_db_node_list_head, azureus_node)    db_node_list;
 };
 
 struct azureus_task * azureus_task_new(struct azureus_dht *ad, 

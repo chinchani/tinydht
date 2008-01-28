@@ -44,6 +44,8 @@ azureus_task_new(struct azureus_dht *ad, struct azureus_node *an,
     at->dht = ad;
     an->task_pending = TRUE;
 
+    TAILQ_INIT(&at->db_node_list);
+
     return at;
 }
 

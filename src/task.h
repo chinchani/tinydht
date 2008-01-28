@@ -40,10 +40,16 @@ struct task {
     struct pkt                          *pkt;
     struct task                         *parent;
     TAILQ_HEAD(child_task_list, task)   child_list;
+    u32                                 n_child;
+    TAILQ_ENTRY(task)                   child_next;
 };
 
 int task_new(struct task *task, struct dht *dht, 
                 struct node *node, struct pkt *pkt);
+
 size_t task_get_pkt_data_len(struct task *task);
+
+int task_add_child_task(struct task *parent, struct task *child);
+int task_remove_child_task(struct task *child);
 
 #endif /* __TASK_H__ */

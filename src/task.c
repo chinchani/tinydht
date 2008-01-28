@@ -25,7 +25,7 @@
 int
 task_new(struct task *task, struct dht *dht, struct node *node, struct pkt *pkt)
 {
-    ASSERT(task && dht && pkt);
+    ASSERT(task && dht && node && pkt);
 
     bzero(task, sizeof(struct task));
     task->node = node;
@@ -41,6 +41,8 @@ task_get_pkt_data_len(struct task *task)
     struct pkt *pkt = NULL;
     size_t len = 0;
 
+    ASSERT(task);
+
     len += pkt->len;
 
 #if 0
@@ -52,3 +54,37 @@ task_get_pkt_data_len(struct task *task)
     return len;
 }
 
+int
+task_add_child_task(struct task *parent, struct task *child)
+{
+    ASSERT(parent && child);
+
+    /* FIXME: do we need to check if this task already exists */
+    TAILQ_INSERT_TAIL(&parent->child_list, child, child_next);
+    parent->n_child++;
+
+    child->parent = parent;
+
+    return SUCCESS;
+}
+
+int
+task_remove_child_task(struct task *child)
+{
+    struct task *parent = NULL;
+    struct task *tn = NULL, *tnn = NULL;
+
+    ASSERT(child);
+
+    parent = child->parent;
+    ASSERT(parent);
+
+    TAILQ_FOREACH_SAFE(tn, &parent->child_list, child_next, tnn) {
+        if (tn == child) {
+            TAILQ_REMOVE(&parent->child_list, tn, child_next);
+            break;
+        }
+    }
+
+    return SUCCESS;
+}

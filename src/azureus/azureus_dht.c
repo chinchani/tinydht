@@ -80,7 +80,7 @@ static bool azureus_dht_contains_node(struct azureus_dht *ad,
 static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, 
                                 struct key *key, int k,
                                 struct kbucket_node_search_list_head *list, 
-                                int *n_list);
+                                int *n_list, u8 min_proto_ver, bool use_ext);
 static int azureus_dht_get_node_count(struct azureus_dht *ad);
 
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
@@ -400,17 +400,18 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     struct pkt *pkt = NULL;
     struct azureus_task *at = NULL;
     struct task *task = NULL;
-    struct azureus_node *an = NULL, *ann = NULL;
-    bool found = FALSE;
-    float rtt = 0.0;
-    int i;
-    struct kbucket_node_search_list_head list;
-    int n_list = 0;
+    struct azureus_node *an = NULL;
+    struct azureus_node *tan = NULL, *tann = NULL;
     struct node *tn = NULL, *tnn = NULL;
     struct key key;
+    struct kbucket_node_search_list_head list;
     struct azureus_db_item *db_item = NULL;
     struct azureus_db_key *db_key = NULL, *db_keyn = NULL;
     struct azureus_db_valset *db_valset = NULL, *db_valsetn = NULL;
+    bool found = FALSE;
+    float rtt = 0.0;
+    int i;
+    int n_list = 0;
     int ret;
 
     ASSERT(dht && from && data);
@@ -477,7 +478,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                         msg->m.find_node_req.id_len);
 
                 azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
-                        &list, &n_list);
+                                    &list, &n_list, PROTOCOL_VERSION_MIN, TRUE);
                 TAILQ_INIT(&rsp->m.find_node_rsp.node_list);
                 TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
                     an = azureus_node_get_ref(tn);
@@ -509,7 +510,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                                     msg->m.find_value_req.key.data, 
                                     msg->m.find_value_req.key.len);
                     azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
-                            &list, &n_list);
+                            &list, &n_list, PROTOCOL_VERSION_MIN, TRUE);
 
                     DEBUG("n_list %d\n", n_list);
 
@@ -582,13 +583,11 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
         /* look for a matching request */
         TAILQ_FOREACH(at, &ad->task_list, next) {
             
-            task = &at->task;
-
-            if (task->state != TASK_STATE_WAIT) {
+            if (at->task.state != TASK_STATE_WAIT) {
                 continue;
             }
 
-            pkt = task->pkt;
+            pkt = at->task.pkt;
             msg1 = azureus_rpc_msg_get_ref(pkt);
             if (azureus_rpc_match_req_rsp(msg1, msg)) {
                 found = TRUE;
@@ -620,18 +619,38 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
                 DEBUG("number of nodes %d\n", msg->m.find_node_rsp.n_nodes);
 
-                /* FIXME: we could have a 'parent' find value task
-                 * - add the nodes to the parent task
-                 */
+                if (at->task.parent) {
+                    /* we have a pending find_value/store_value request */
+                    /* FIXME: we could have a 'parent' find value task
+                     * - add the nodes to the parent task
+                     */
 
-                TAILQ_FOREACH_SAFE(an, &msg->m.find_node_rsp.node_list, 
-                                                                    next, ann) {
-                    TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, an, next);
-                    if (azureus_dht_contains_node(ad, an)) {
-                        azureus_node_delete(an);
-                        continue;
+                    TAILQ_FOREACH_SAFE(tan, &msg->m.find_node_rsp.node_list,
+                                        next, tann) {
+                        TAILQ_REMOVE(&msg->m.find_node_rsp.node_list,
+                                        tan, next);
+                        if (!azureus_dht_contains_node(ad, tan)) {
+                            azureus_dht_add_node(ad, tan);
+                        }
+#if 0
+                        if (!parent_task contains node) {
+                            parent_task add node
+                        }
+#endif
                     }
-                    azureus_dht_add_node(ad, an);
+
+                } else {
+
+                    TAILQ_FOREACH_SAFE(tan, &msg->m.find_node_rsp.node_list, 
+                                        next, tann) {
+                        TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, 
+                                        tan, next);
+                        if (azureus_dht_contains_node(ad, tan)) {
+                            azureus_node_delete(tan);
+                            continue;
+                        }
+                        azureus_dht_add_node(ad, tan);
+                    }
                 }
 
                 /* FIXME: fix this later! */
@@ -642,14 +661,19 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
             case ACT_REPLY_FIND_VALUE:
 
-                TAILQ_FOREACH_SAFE(an, &msg->m.find_value_rsp.node_list, 
-                                                                    next, ann) {
-                    TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, an, next);
-                    if (azureus_dht_contains_node(ad, an)) {
-                        azureus_node_delete(an);
-                        continue;
+                if (&msg->m.find_value_rsp.has_vals) {
+                } else {
+
+                    TAILQ_FOREACH_SAFE(tan, &msg->m.find_value_rsp.node_list, 
+                                        next, tann) {
+                        TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, 
+                                        tan, next);
+                        if (azureus_dht_contains_node(ad, tan)) {
+                            azureus_node_delete(tan);
+                            continue;
+                        }
+                        azureus_dht_add_node(ad, tan);
                     }
-                    azureus_dht_add_node(ad, an);
                 }
                 break;
 
@@ -913,7 +937,7 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
     struct azureus_rpc_msg *msg = NULL;
     struct kbucket_node_search_list_head list;
     struct azureus_node *ann = NULL;
-    struct node *tn = NULL;
+    struct node *tn = NULL, *tnn = NULL;
     struct azureus_task *at = NULL, *fnat = NULL;
     int n_list = 0;
     struct key key;
@@ -934,12 +958,27 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
         return NULL;
     }
 
+
+    msg = azureus_rpc_msg_new(ad, &an->ext_addr, 
+                                sizeof(struct sockaddr_storage), NULL, 0);
+    if (!msg) {
+        return NULL;
+    }
+
+    msg->action = ACT_REQUEST_FIND_VALUE; 
+    msg->pkt.dir = PKT_DIR_TX;
+
+    msg->m.find_value_req.flags = FLAG_SINGLE_VALUE;
+    msg->m.find_value_req.max_vals = AZUREUS_MAX_VALS_PER_KEY;
+    memcpy(&msg->m.find_value_req.key, &key, sizeof(key));
+
     at = azureus_task_new(ad, an, msg);
     if (!at) {
         return NULL;
     }
 
-    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, &list, &n_list);
+    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, &list, &n_list, 
+                                    PROTOCOL_VERSION_MIN, TRUE);
     /* FIXME: We need nodes which are at least PROTO_FIND_VALUE */
 
     /* Add a find value task on each of these tasks, and make
@@ -949,10 +988,12 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
      * where no new nodes can be accumulated, then we can do a find value on
      * the 20 closest nodes! */
 
-    TAILQ_FOREACH(tn, &list, next) {
+    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
         ann = azureus_node_get_ref(tn);
+        TAILQ_INSERT_TAIL(&at->db_node_list, ann, next);
+        /* FIXME: may have task pending, override it!! */
         fnat = azureus_dht_add_find_node_task(ad, ann, &key);
-        fnat->task.parent = at;
+        task_add_child_task(&at->task, &fnat->task);
     }
 
     return at;
@@ -964,6 +1005,27 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
                                     struct azureus_db_key *key)
 {
     struct azureus_rpc_msg *msg = NULL;
+    struct azureus_db_item *db_item = NULL;
+
+    return SUCCESS;
+}
+
+static int
+azureus_dht_db_task_done(struct azureus_task *at, struct azureus_node *an)
+{
+    struct azureus_node *tn = NULL;
+
+    ASSERT(at && an);
+
+    /* check if this node already exists */
+
+    TAILQ_FOREACH(tn, &at->db_node_list, next) {
+        ASSERT(an != tn);
+
+        if (key_cmp(&an->node.id, &tn->node.id) == 0) {
+            break;
+        }
+    }
 
     return SUCCESS;
 }
@@ -1167,7 +1229,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 static int
 azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                                 struct kbucket_node_search_list_head *list, 
-                                int *n_list)
+                                int *n_list, u8 min_proto_ver, bool use_ext)
 {
     struct key dist;
     int index, max_index;
@@ -1185,6 +1247,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 
     max_index = key->len*8*sizeof(key->data[0]);
 
+    /* first, walk forward */
     for (index = (max_index - 1); (index >= 0) && (count < k); index--) {
         if (key_nth_bit(&dist, index) != 1) {
             continue;
@@ -1201,18 +1264,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 continue;
             }
 
-            TAILQ_INSERT_TAIL(list, tn, next);
-            count++;
-
-            if (count == k) {
-                *n_list = count;
-                return SUCCESS;
-            }
-        }
-
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, kb_next, tnn) {
-            an = azureus_node_get_ref(tn);
-            if (!an->alive) {
+            if (an->proto_ver < min_proto_ver) {
                 continue;
             }
 
@@ -1222,6 +1274,29 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
             if (count == k) {
                 *n_list = count;
                 return SUCCESS;
+            }
+        }
+
+        if (use_ext) {
+
+            LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, 
+                                kb_next, tnn) {
+                an = azureus_node_get_ref(tn);
+                if (!an->alive) {
+                    continue;
+                }
+
+                if (an->proto_ver < min_proto_ver) {
+                    continue;
+                }
+
+                TAILQ_INSERT_TAIL(list, tn, next);
+                count++;
+
+                if (count == k) {
+                    *n_list = count;
+                    return SUCCESS;
+                }
             }
         }
     }
@@ -1239,18 +1314,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 continue;
             }
 
-            TAILQ_INSERT_TAIL(list, tn, next);
-            count++;
-
-            if (count == k) {
-                *n_list = count;
-                return SUCCESS;
-            }
-        }
-
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, kb_next, tnn) {
-            an = azureus_node_get_ref(tn);
-            if (!an->alive) {
+            if (an->proto_ver < min_proto_ver) {
                 continue;
             }
 
@@ -1260,6 +1324,29 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
             if (count == k) {
                 *n_list = count;
                 return SUCCESS;
+            }
+        }
+
+        if (use_ext) {
+
+            LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, 
+                                    kb_next, tnn) {
+                an = azureus_node_get_ref(tn);
+                if (!an->alive) {
+                    continue;
+                }
+
+                if (an->proto_ver < min_proto_ver) {
+                    continue;
+                }
+
+                TAILQ_INSERT_TAIL(list, tn, next);
+                count++;
+
+                if (count == k) {
+                    *n_list = count;
+                    return SUCCESS;
+                }
             }
         }
     }

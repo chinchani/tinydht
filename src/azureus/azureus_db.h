@@ -57,6 +57,7 @@ struct azureus_db_item {
     struct azureus_dht                  *dht;
     u64                                 cr_time;        /* creation time */
     u64                                 last_refresh;   /* last publish time */
+    bool                                task_pending;
     struct azureus_db_key               *key;
     struct azureus_db_valset            *valset;
     bool                                is_local;
