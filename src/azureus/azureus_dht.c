@@ -60,13 +60,13 @@ static struct azureus_task * azureus_dht_add_find_node_task(
                                                     struct key *node_id);
 
 static struct azureus_task * azureus_dht_add_find_value_task(
-                                                    struct azureus_dht *ad, 
-                                                    struct azureus_node *an, 
-                                                    struct azureus_db_key *key);
+                                            struct azureus_dht *ad, 
+                                            struct azureus_node *an, 
+                                            struct azureus_db_key *key);
 static struct azureus_task * azureus_dht_add_store_value_task(
-                                                    struct azureus_dht *ad, 
-                                                    struct azureus_node *an, 
-                                                    struct azureus_db_key *key);
+                                            struct azureus_dht *ad, 
+                                            struct azureus_node *an,
+                                            struct azureus_db_item *db_item);
 static int azureus_dht_add_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
 static int azureus_dht_delete_node(struct azureus_dht *ad, 
@@ -96,6 +96,7 @@ static int azureus_dht_delete_db_item(struct azureus_dht *ad,
 static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
+static int azureus_dht_notify_parent_task(struct azureus_task *at, bool status);
 
 static void azureus_dht_update_rpc_stats(struct azureus_dht *ad, u32 action, 
                                 enum pkt_dir dir);
@@ -261,19 +262,22 @@ azureus_dht_task_schedule(struct dht *dht)
 
     /* the main task processing loop */
     TAILQ_FOREACH_SAFE(at, &ad->task_list, next, atn) {
-        task = &at->task;
-        if (task->state == TASK_STATE_WAIT) {
+        if (at->task.state == TASK_STATE_WAIT) {
             /* was there a timeout? */
-            if ((curr_time - task->access_time) < AZUREUS_RPC_TIMEOUT) {
+            if ((curr_time - at->task.access_time) < AZUREUS_RPC_TIMEOUT) {
                 /* this task hasn't timed out yet, so wait some more! */
                 continue;
             }
 
             if (at->retries == 0) {
                 DEBUG("task timed out\n");
-                an = azureus_node_get_ref(task->node);
+                an = azureus_node_get_ref(at->task.node);
                 ASSERT(an);
-                azureus_dht_delete_task(ad, at);      
+                if (at->task.parent) {
+                    azureus_dht_notify_parent_task(at, FAILURE);
+                } else {
+                    azureus_dht_delete_task(ad, at);      
+                }
                 an->alive = FALSE;
                 an->failures++;
                 if (an->failures == MAX_RPC_FAILURES) {
@@ -291,7 +295,7 @@ azureus_dht_task_schedule(struct dht *dht)
             continue;
         }
 
-        pkt = task->pkt;
+        pkt = at->task.pkt;
 //        pkt = TAILQ_FIRST(&task->pkt_list);
         msg = azureus_rpc_msg_get_ref(pkt);
 
@@ -620,37 +624,19 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 DEBUG("number of nodes %d\n", msg->m.find_node_rsp.n_nodes);
 
                 if (at->task.parent) {
-                    /* we have a pending find_value/store_value request */
-                    /* FIXME: we could have a 'parent' find value task
-                     * - add the nodes to the parent task
-                     */
+                    azureus_dht_notify_parent_task(at, SUCCESS);
+                    break;
+                }
 
-                    TAILQ_FOREACH_SAFE(tan, &msg->m.find_node_rsp.node_list,
-                                        next, tann) {
-                        TAILQ_REMOVE(&msg->m.find_node_rsp.node_list,
-                                        tan, next);
-                        if (!azureus_dht_contains_node(ad, tan)) {
-                            azureus_dht_add_node(ad, tan);
-                        }
-#if 0
-                        if (!parent_task contains node) {
-                            parent_task add node
-                        }
-#endif
+                TAILQ_FOREACH_SAFE(tan, &msg->m.find_node_rsp.node_list, 
+                        next, tann) {
+                    TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, 
+                            tan, next);
+                    if (azureus_dht_contains_node(ad, tan)) {
+                        azureus_node_delete(tan);
+                        continue;
                     }
-
-                } else {
-
-                    TAILQ_FOREACH_SAFE(tan, &msg->m.find_node_rsp.node_list, 
-                                        next, tann) {
-                        TAILQ_REMOVE(&msg->m.find_node_rsp.node_list, 
-                                        tan, next);
-                        if (azureus_dht_contains_node(ad, tan)) {
-                            azureus_node_delete(tan);
-                            continue;
-                        }
-                        azureus_dht_add_node(ad, tan);
-                    }
+                    azureus_dht_add_node(ad, tan);
                 }
 
                 /* FIXME: fix this later! */
@@ -665,9 +651,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 } else {
 
                     TAILQ_FOREACH_SAFE(tan, &msg->m.find_value_rsp.node_list, 
-                                        next, tann) {
+                            next, tann) {
                         TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, 
-                                        tan, next);
+                                tan, next);
                         if (azureus_dht_contains_node(ad, tan)) {
                             azureus_node_delete(tan);
                             continue;
@@ -1001,30 +987,74 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
 
 static struct azureus_task *
 azureus_dht_add_store_value_task(struct azureus_dht *ad, 
-                                    struct azureus_node *an, 
-                                    struct azureus_db_key *key)
+                                    struct azureus_node *an,
+                                    struct azureus_db_item *db_item)
 {
     struct azureus_rpc_msg *msg = NULL;
-    struct azureus_db_item *db_item = NULL;
+    struct kbucket_node_search_list_head list;
+    struct azureus_node *ann = NULL;
+    struct node *tn = NULL, *tnn = NULL;
+    struct azureus_task *at = NULL, *fnat = NULL;
+    int n_list = 0;
+    struct key key;
+    int ret;
+
+    ASSERT(ad && an && db_item);
+
+    ret = key_new(&key, KEY_TYPE_SHA1, db_item->key->data, db_item->key->len);
+    if (ret != SUCCESS) {
+        return NULL;
+    }
+
+    msg = azureus_rpc_msg_new(ad, &an->ext_addr, 
+                                sizeof(struct sockaddr_storage), NULL, 0);
+    if (!msg) {
+        return NULL;
+    }
+
+    msg->action = ACT_REQUEST_STORE; 
+    msg->pkt.dir = PKT_DIR_TX;
+
+    msg->m.store_value_req.db_item = db_item;
+
+    at = azureus_task_new(ad, an, msg);
+    if (!at) {
+        return NULL;
+    }
+
+    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+        ann = azureus_node_get_ref(tn);
+        TAILQ_INSERT_TAIL(&at->db_node_list, ann, next);
+        /* FIXME: may have task pending, override it!! */
+        fnat = azureus_dht_add_find_node_task(ad, ann, &key);
+        task_add_child_task(&at->task, &fnat->task);
+    }
+
+    db_item->task_pending = TRUE;
 
     return SUCCESS;
 }
 
 static int
-azureus_dht_db_task_done(struct azureus_task *at, struct azureus_node *an)
+azureus_dht_notify_parent_task(struct azureus_task *at, bool status)
 {
     struct azureus_node *tn = NULL;
+    struct azureus_task *pat = NULL;
+    struct azureus_rpc_msg *msg = NULL;
 
-    ASSERT(at && an);
+    ASSERT(at);
 
-    /* check if this node already exists */
+    pat = at->task.parent;
+    ASSERT(pat);
 
-    TAILQ_FOREACH(tn, &at->db_node_list, next) {
-        ASSERT(an != tn);
+    msg = azureus_rpc_msg_get_ref(pat->task.pkt);
 
-        if (key_cmp(&an->node.id, &tn->node.id) == 0) {
+    switch (msg->action) {
+        case ACT_REQUEST_FIND_VALUE:
+        case ACT_REQUEST_STORE:
             break;
-        }
+        default:
+            ASSERT(0);
     }
 
     return SUCCESS;
@@ -1378,8 +1408,11 @@ static int
 azureus_dht_db_refresh(struct azureus_dht *ad)
 {
     struct azureus_db_item *item = NULL, *itemn = NULL;
+    u64 curr_time = 0;
 
     ASSERT(ad);
+
+    curr_time = dht_get_current_time();
 
     if (!azureus_dht_is_stable(ad)) {
         return FAILURE;
@@ -1388,6 +1421,14 @@ azureus_dht_db_refresh(struct azureus_dht *ad)
     TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
         if (!item->is_local) {
             continue;
+        }
+
+        if (item->task_pending) {
+            continue;
+        }
+
+        if ((curr_time - item->last_refresh) > STORE_VALUE_TIMEOUT) {
+            azureus_dht_add_store_value_task(ad, ad->this_node, item);
         }
     }
 
