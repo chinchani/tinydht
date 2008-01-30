@@ -341,7 +341,7 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct azureus_task *at,
     u64 curr_time = 0;
     int ret;
 
-    ASSERT(ad && at && msg);
+    ASSERT(ad && msg);  /* param "at" can be null! */
 
     ret = sendto(ad->dht.net_if.sock, msg->pkt.data, msg->pkt.len, 0, 
             (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
