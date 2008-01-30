@@ -35,6 +35,12 @@ struct azureus_task {
     TAILQ_HEAD(azureus_db_node_list_head, azureus_node)    db_node_list;
 };
 
+static inline struct azureus_task *
+azureus_task_get_ref(struct task *task) 
+{
+    return container_of(task, struct azureus_task, task);
+}
+
 struct azureus_task * azureus_task_new(struct azureus_dht *ad, 
                                         struct azureus_node *an,
                                         struct azureus_rpc_msg *msg);

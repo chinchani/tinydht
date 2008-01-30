@@ -43,9 +43,9 @@ extern int errno;
 
 /*********************** Function Prototypes ***********************/
 
-static int azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task, 
+static int azureus_dht_rpc_tx(struct azureus_dht *ad, 
+                            struct azureus_task *task, 
                             struct azureus_rpc_msg *msg);
-
 
 static bool azureus_dht_allow_add_task(struct azureus_dht *ad);
 static int azureus_dht_add_task(struct azureus_dht *ad, 
@@ -107,7 +107,7 @@ static void azureus_dht_print_task_stats(struct azureus_dht *ad);
 static void azureus_dht_db_stats(struct azureus_dht *ad);
 
 
-static void azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size, 
+static void azureus_dht_net_usage_update(struct azureus_dht *ad, size_t size, 
                                 enum pkt_dir pkt_dir);
 static bool azureus_dht_rate_limit_allow(struct azureus_dht *ad);
 
@@ -242,7 +242,6 @@ azureus_dht_task_schedule(struct dht *dht)
     struct azureus_rpc_msg *msg = NULL;
     struct pkt *pkt = NULL;
     struct azureus_task *at = NULL, *atn = NULL;
-    struct task *task = NULL;
     struct azureus_node *an = NULL;
     u64 curr_time = 0;
     bool rate_limit_allow = TRUE;
@@ -322,7 +321,7 @@ azureus_dht_task_schedule(struct dht *dht)
                     return FAILURE;
                 }
 
-                azureus_dht_rpc_tx(ad, task, msg);
+                azureus_dht_rpc_tx(ad, at, msg);
 
                 break;
 
@@ -335,14 +334,14 @@ azureus_dht_task_schedule(struct dht *dht)
 }
 
 static int
-azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task, 
+azureus_dht_rpc_tx(struct azureus_dht *ad, struct azureus_task *at, 
                 struct azureus_rpc_msg *msg)
 {
     struct azureus_node *an = NULL;
     u64 curr_time = 0;
     int ret;
 
-    ASSERT(ad && msg);
+    ASSERT(ad && at && msg);
 
     ret = sendto(ad->dht.net_if.sock, msg->pkt.data, msg->pkt.len, 0, 
             (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
@@ -364,20 +363,18 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct task *task,
 
     pkt_dump(&msg->pkt);
 
-//    ad->stats.net.tx += ret;
-
-    azureus_dht_rate_limit_update(ad, ret, PKT_DIR_TX);
+    azureus_dht_net_usage_update(ad, ret, PKT_DIR_TX);
 
     azureus_dht_update_rpc_stats(ad, msg->action, msg->pkt.dir);
 
-    if (!task) {
+    if (!at) {
         return SUCCESS;
     }
 
-    task->state = TASK_STATE_WAIT;
-    task->access_time = curr_time;
+    at->task.state = TASK_STATE_WAIT;
+    at->task.access_time = curr_time;
 
-    an = azureus_node_get_ref(task->node);
+    an = azureus_node_get_ref(at->task.node);
     ASSERT(an);
 
     switch (msg->action) {
@@ -401,9 +398,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     struct azureus_dht *ad = NULL;
     struct azureus_rpc_msg *msg = NULL, *msg1 = NULL;
     struct azureus_rpc_msg *rsp = NULL;
-    struct pkt *pkt = NULL;
     struct azureus_task *at = NULL;
-    struct task *task = NULL;
     struct azureus_node *an = NULL;
     struct azureus_node *tan = NULL, *tann = NULL;
     struct node *tn = NULL, *tnn = NULL;
@@ -422,9 +417,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
     ad = azureus_dht_get_ref(dht);
 
-//    ad->stats.net.rx += len;
-
-    azureus_dht_rate_limit_update(ad, len, PKT_DIR_RX);
+    azureus_dht_net_usage_update(ad, len, PKT_DIR_RX);
 
     /* decode the rpc msg */
     ret = azureus_rpc_msg_decode(ad, from, fromlen, data, len, &msg);
@@ -591,8 +584,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 continue;
             }
 
-            pkt = at->task.pkt;
-            msg1 = azureus_rpc_msg_get_ref(pkt);
+            msg1 = azureus_rpc_msg_get_ref(at->task.pkt);
             if (azureus_rpc_match_req_rsp(msg1, msg)) {
                 found = TRUE;
                 break;
@@ -606,7 +598,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             return SUCCESS;
         }
 
-        an = azureus_node_get_ref(task->node);
+        an = azureus_node_get_ref(at->task.node);
         ASSERT(an);
         an->alive = TRUE;
         an->failures = 0;
@@ -674,7 +666,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
 
         /* update vivaldi position if relevant */
-        rtt = 1.0*(timestamp - task->access_time)/1000;
+        rtt = 1.0*(timestamp - at->task.access_time)/1000;
         DEBUG("RTT %f\n", rtt);
 
         for (i = 0; i < msg->n_viv_pos; i++) {
@@ -944,7 +936,6 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
         return NULL;
     }
 
-
     msg = azureus_rpc_msg_new(ad, &an->ext_addr, 
                                 sizeof(struct sockaddr_storage), NULL, 0);
     if (!msg) {
@@ -1021,7 +1012,7 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
     if (!at) {
         return NULL;
     }
-
+#if 0
     TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
         ann = azureus_node_get_ref(tn);
         TAILQ_INSERT_TAIL(&at->db_node_list, ann, next);
@@ -1029,6 +1020,7 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
         fnat = azureus_dht_add_find_node_task(ad, ann, &key);
         task_add_child_task(&at->task, &fnat->task);
     }
+#endif
 
     db_item->task_pending = TRUE;
 
@@ -1044,7 +1036,7 @@ azureus_dht_notify_parent_task(struct azureus_task *at, bool status)
 
     ASSERT(at);
 
-    pat = at->task.parent;
+    pat = azureus_task_get_ref(at->task.parent);
     ASSERT(pat);
 
     msg = azureus_rpc_msg_get_ref(pat->task.pkt);
@@ -1192,9 +1184,12 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     max_index = (ad->this_node->node.id.len)*8
                         *sizeof(ad->this_node->node.id.data[0]);
 
-    for (index = 0; index < max_index; index++) {
+    for (index = max_index - 1; index >= 0; index--) {
 
         kbucket = &ad->kbucket[index];
+        if (kbucket->n_nodes == 0) {
+            continue;
+        }
 
         LIST_FOREACH_SAFE(node, &kbucket->node_list, kb_next, noden) {
 
@@ -1208,6 +1203,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 
                 azureus_dht_add_ping_task(ad, an);
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
+                continue;
             }
 
             if (!an->alive && (an->failures < MAX_RPC_FAILURES)) {
@@ -1795,7 +1791,7 @@ azureus_dht_print_task_stats(struct azureus_dht *ad)
 
 /* Rate-limiting */
 static void
-azureus_dht_rate_limit_update(struct azureus_dht *ad, size_t size, 
+azureus_dht_net_usage_update(struct azureus_dht *ad, size_t size, 
                                 enum pkt_dir pkt_dir)
 {
     ASSERT(ad);
