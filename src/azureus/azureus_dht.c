@@ -1080,6 +1080,9 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     }
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node, AZUREUS_K);
+    if (index > ad->max_kbucket_index) {
+        ad->max_kbucket_index = index;
+    }
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
@@ -1113,6 +1116,12 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     }
 
     azureus_node_delete(an);
+
+    if (&ad->kbucket[index].n_nodes == 0) {
+        while (&ad->kbucket[index--].n_nodes == 0) {
+            ad->max_kbucket_index--;
+        }
+    }
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
@@ -1184,7 +1193,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     max_index = (ad->this_node->node.id.len)*8
                         *sizeof(ad->this_node->node.id.data[0]);
 
-    for (index = max_index - 1; index >= 0; index--) {
+    for (index = ad->max_kbucket_index; index >= 0; index--) {
 
         kbucket = &ad->kbucket[index];
         if (kbucket->n_nodes == 0) {
@@ -1274,7 +1283,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     max_index = key->len*8*sizeof(key->data[0]);
 
     /* first, walk forward */
-    for (index = (max_index - 1); (index >= 0) && (count < k); index--) {
+    for (index = ad->max_kbucket_index; (index >= 0) && (count < k); index--) {
         if (key_nth_bit(&dist, index) != 1) {
             continue;
         }
@@ -1328,7 +1337,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     }
 
     /* we walk backwards now */
-    for (index = 0; (index < max_index) && (count < k) 
+    for (index = 0; (index <= ad->max_kbucket_index) && (count < k) 
                             && (index > high); index++) {
         if (key_nth_bit(&dist, index) != 0) {
             continue;
