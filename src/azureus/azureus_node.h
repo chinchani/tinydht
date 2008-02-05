@@ -45,7 +45,7 @@ struct azureus_node {
     u32                                 rnd_id;         /* anti-spoof */
     u32                                 my_rnd_id;
     struct azureus_vivaldi_pos          viv_pos[MAX_RPC_VIVALDI_POS];
-    bool                                task_pending;
+    struct azureus_task                 *task_pending;
     bool                                alive;
     u64                                 last_ping;
     u64                                 last_find_node;

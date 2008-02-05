@@ -42,7 +42,7 @@ azureus_task_new(struct azureus_dht *ad, struct azureus_node *an,
     task_new(&at->task, &ad->dht, &an->node, &msg->pkt);
     at->retries = MAX_RPC_RETRIES;
     at->dht = ad;
-    an->task_pending = TRUE;
+    an->task_pending = at;
 
     TAILQ_INIT(&at->db_node_list);
 
@@ -68,8 +68,9 @@ azureus_task_delete(struct azureus_task *at)
     azureus_rpc_msg_delete(msg);
 
     an = azureus_node_get_ref(task->node);
-    an->task_pending = FALSE;
 
     free(at);
+    an->task_pending = NULL;
+
     ad->stats.mem.task--;
 }

@@ -1003,6 +1003,14 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
         return NULL;
     }
 
+    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, &list, &n_list, 
+                                    PROTOCOL_VERSION_MIN, TRUE);
+
+    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+        ann = azureus_node_get_ref(tn);
+        TAILQ_INSERT_TAIL(&db_item->node_list, ann, next);
+    }
+
     msg->action = ACT_REQUEST_STORE; 
     msg->pkt.dir = PKT_DIR_TX;
 
@@ -1021,8 +1029,6 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
         task_add_child_task(&at->task, &fnat->task);
     }
 #endif
-
-    db_item->task_pending = TRUE;
 
     return SUCCESS;
 }
@@ -1057,6 +1063,8 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 {
     int index = 0;
     struct node *n = NULL;
+    struct azureus_db_item *item = NULL;
+    struct key dist1, dist2;
     int ret;
 
     ASSERT(ad && an);
@@ -1080,12 +1088,16 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     }
 
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node, AZUREUS_K);
-    if (index > ad->max_kbucket_index) {
-        ad->max_kbucket_index = index;
-    }
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
+
+    if (an->alive) {
+        /* FIXME: if this node is closer to any of the key value pairs,
+         * store value it on this node */
+        TAILQ_FOREACH(item, &ad->db_list, db_next) {
+        }
+    }
 
     return SUCCESS;
 }
@@ -1116,12 +1128,6 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     }
 
     azureus_node_delete(an);
-
-    if (&ad->kbucket[index].n_nodes == 0) {
-        while (&ad->kbucket[index--].n_nodes == 0) {
-            ad->max_kbucket_index--;
-        }
-    }
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
@@ -1193,7 +1199,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     max_index = (ad->this_node->node.id.len)*8
                         *sizeof(ad->this_node->node.id.data[0]);
 
-    for (index = ad->max_kbucket_index; index >= 0; index--) {
+    for (index = (max_index - 1); index >= 0; index--) {
 
         kbucket = &ad->kbucket[index];
         if (kbucket->n_nodes == 0) {
@@ -1211,7 +1217,8 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 }
 
                 azureus_dht_add_ping_task(ad, an);
-                azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
+                azureus_dht_add_find_node_task(ad, an, 
+                                    &ad->this_node->node.id);
                 continue;
             }
 
@@ -1230,6 +1237,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 /* create a find_node task */
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
             }
+
 #if 0
             if (an->alive && ((curr_time - kbucket->last_refresh) 
                                                 > KBUCKET_REFRESH_TIMEOUT)) {
@@ -1270,7 +1278,6 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     int index, max_index;
     int count = 0;
     int ret;
-    int high = 0;
     struct node *tn = NULL, *tnn = NULL;
     struct azureus_node *an = NULL;
 
@@ -1283,17 +1290,13 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     max_index = key->len*8*sizeof(key->data[0]);
 
     /* first, walk forward */
-    for (index = ad->max_kbucket_index; (index >= 0) && (count < k); index--) {
+    for (index = (max_index - 1); (index >= 0) && (count < k); index--) {
+
         if (key_nth_bit(&dist, index) != 1) {
             continue;
         }
 
-        if (index > high) {
-            high = index;
-            DEBUG("high %d\n", high);
-        }
-
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, kb_next, tnn) {
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].node_list, kb_next, tnn) {
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
@@ -1314,7 +1317,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 
         if (use_ext) {
 
-            LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, 
+            LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].ext_node_list, 
                                 kb_next, tnn) {
                 an = azureus_node_get_ref(tn);
                 if (!an->alive) {
@@ -1337,13 +1340,12 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     }
 
     /* we walk backwards now */
-    for (index = 0; (index <= ad->max_kbucket_index) && (count < k) 
-                            && (index > high); index++) {
+    for (index = 0; (index <= (max_index - 1)) && (count < k); index++) {
         if (key_nth_bit(&dist, index) != 0) {
             continue;
         }
 
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[index].node_list, kb_next, tnn) {
+        LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].node_list, kb_next, tnn) {
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
@@ -1364,7 +1366,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 
         if (use_ext) {
 
-            LIST_FOREACH_SAFE(tn, &ad->kbucket[index].ext_node_list, 
+            LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].ext_node_list, 
                                     kb_next, tnn) {
                 an = azureus_node_get_ref(tn);
                 if (!an->alive) {
@@ -1425,10 +1427,8 @@ azureus_dht_db_refresh(struct azureus_dht *ad)
 
     TAILQ_FOREACH_SAFE(item, &ad->db_list, db_next, itemn) {
         if (!item->is_local) {
-            continue;
-        }
-
-        if (item->task_pending) {
+            /* FIXME: we don't publish the key-value pair if this is not the
+             * originating node */
             continue;
         }
 

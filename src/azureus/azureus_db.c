@@ -151,6 +151,8 @@ azureus_db_item_new(struct azureus_dht *ad, struct azureus_db_key *key,
     item->valset = valset;
     item->cr_time = dht_get_current_time();
 
+    TAILQ_INIT(&item->node_list);
+
     return item;
 }
 

@@ -70,7 +70,6 @@ struct azureus_dht {
     struct azureus_node         *this_node;
     struct azureus_node         *bootstrap;
     struct kbucket              kbucket[160];
-    int                         max_kbucket_index;
     u64                         cr_time;
     u32                         n_tasks;
     TAILQ_HEAD(azureus_task_list_head, azureus_task)    task_list;

@@ -33,39 +33,23 @@
 
 #define MAX_KEYS        5
 
-const char * key[] = {
-    "key1",
-    "key2",
-    "key3",
-    "key4",
-    "key5",
-    (char *)0
-};
-
-const char * value[] = {
-    "value1",
-    "value2",
-    "value3",
-    "value4",
-    "value5",
-    (char *)0
-};
-
 int
-main()
+main(int argc, char *argv[])
 {
     int sock;
     struct sockaddr_in addr4;
     int ret;
     struct tinydht_msg_req req;
     struct tinydht_msg_rsp rsp;
-    u32 index;
-    struct timeval tv;
+    char key[256];
 
-    bzero(&tv, sizeof(tv));
-    gettimeofday(&tv, NULL);
-    srandom(tv.tv_usec);
-    index = random() % MAX_KEYS;
+    if (argc != 2) {
+        printf("usage: %s <key>\n", argv[0]);
+        exit(1);
+    }
+
+    bzero(key, sizeof(key));
+    memcpy(key, argv[1], sizeof(key)-1);
 
     /* do a GET on TinyDHT */
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -92,8 +76,8 @@ main()
 
     bzero(&req, sizeof(req));
     req.action = TINYDHT_ACTION_GET;
-    strncpy((char *)req.key, (char *)key[index], MAX_KEY_LEN);
-    req.key_len = htonl(strlen(key[index]));
+    strncpy((char *)req.key, (char *)key, MAX_KEY_LEN);
+    req.key_len = htonl(strlen(key));
 
     DEBUG("GET send\n");
     ret = send(sock, &req, sizeof(req), 0);

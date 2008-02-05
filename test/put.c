@@ -52,20 +52,26 @@ const char * value[] = {
 };
 
 int
-main()
+main(int argc, char *argv[])
 {
     int sock;
     struct sockaddr_in addr4;
     int ret;
     struct tinydht_msg_req req;
     struct tinydht_msg_rsp rsp;
-    u32 index;
-    struct timeval tv;
+    char key[256];
+    char value[256];
 
-    bzero(&tv, sizeof(tv));
-    gettimeofday(&tv, NULL);
-    srandom(tv.tv_usec);
-    index = random() % MAX_KEYS;
+    if (argc != 3) {
+        printf("usage: %s <key> <value>\n", argv[0]);
+        exit(1);
+    }
+
+    bzero(key, sizeof(key));
+    memcpy(key, argv[1], sizeof(key)-1);
+
+    bzero(value, sizeof(value));
+    memcpy(value, argv[2], sizeof(value)-1);
 
     /* do a PUT on TinyDHT */
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -92,10 +98,10 @@ main()
 
     bzero(&req, sizeof(req));
     req.action = TINYDHT_ACTION_PUT;
-    strncpy((char *)req.key, (char *)key[index], MAX_KEY_LEN);
-    req.key_len = htonl(strlen(key[index]));
-    strncpy((char *)req.val, (char *)value[index], MAX_KEY_LEN);
-    req.val_len = htonl(strlen(value[index]));
+    strncpy((char *)req.key, (char *)key, MAX_KEY_LEN);
+    req.key_len = htonl(strlen(key));
+    strncpy((char *)req.val, (char *)value, MAX_KEY_LEN);
+    req.val_len = htonl(strlen(value));
 
     DEBUG("PUT send - key(%s) -> val(%s)\n", req.key, req.val);
     ret = send(sock, &req, sizeof(req), 0);

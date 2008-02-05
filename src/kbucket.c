@@ -64,8 +64,6 @@ kbucket_delete_node(struct kbucket *k, struct node *n)
     ASSERT(k && n);
 
     /* search the kbucket's node list */
-    /* FIXME: if we remove a node from this list, we have to find a replacement
-     * from the extended node list!! */
     LIST_FOREACH_SAFE(tn, &k->node_list, kb_next, tnn) {
 
         if (key_cmp(&tn->id, &n->id) == 0) {
