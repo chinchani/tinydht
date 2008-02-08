@@ -314,7 +314,7 @@ azureus_dht_task_schedule(struct dht *dht)
                 }
 
                 DEBUG("TX\n");
-                pkt_reset_data(&msg->pkt);
+                // pkt_reset_data(&msg->pkt);
                 /* FIXME: encode everytime? */
                 ret = azureus_rpc_msg_encode(msg);  
                 if (ret != SUCCESS) {
@@ -913,11 +913,7 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
                                 struct azureus_db_key *db_key)
 {
     struct azureus_rpc_msg *msg = NULL;
-    struct kbucket_node_search_list_head list;
-    struct azureus_node *ann = NULL;
-    struct node *tn = NULL, *tnn = NULL;
-    struct azureus_task *at = NULL, *fnat = NULL;
-    int n_list = 0;
+    struct azureus_task *at = NULL;
     struct key key;
     int ret;
 
@@ -951,27 +947,14 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
 
     at = azureus_task_new(ad, an, msg);
     if (!at) {
+        azureus_rpc_msg_delete(msg);
         return NULL;
     }
 
-    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, &list, &n_list, 
-                                    PROTOCOL_VERSION_MIN, TRUE);
-    /* FIXME: We need nodes which are at least PROTO_FIND_VALUE */
+    an->task_pending = at;
+    azureus_dht_add_task(ad, at);
 
-    /* Add a find value task on each of these tasks, and make
-     * this task a parent task for each of these tasks.
-     *
-     * Once those tasks complete, accumulate the nodes. If we reach a point
-     * where no new nodes can be accumulated, then we can do a find value on
-     * the 20 closest nodes! */
-
-    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
-        ann = azureus_node_get_ref(tn);
-        TAILQ_INSERT_TAIL(&at->db_node_list, ann, next);
-        /* FIXME: may have task pending, override it!! */
-        fnat = azureus_dht_add_find_node_task(ad, ann, &key);
-        task_add_child_task(&at->task, &fnat->task);
-    }
+    DEBUG("Added a STORE VALUE task %p\n", at);
 
     return at;
 }
@@ -982,11 +965,7 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
                                     struct azureus_db_item *db_item)
 {
     struct azureus_rpc_msg *msg = NULL;
-    struct kbucket_node_search_list_head list;
-    struct azureus_node *ann = NULL;
-    struct node *tn = NULL, *tnn = NULL;
-    struct azureus_task *at = NULL, *fnat = NULL;
-    int n_list = 0;
+    struct azureus_task *at = NULL;
     struct key key;
     int ret;
 
@@ -1003,32 +982,30 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
         return NULL;
     }
 
-    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, &list, &n_list, 
-                                    PROTOCOL_VERSION_MIN, TRUE);
-
-    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
-        ann = azureus_node_get_ref(tn);
-        TAILQ_INSERT_TAIL(&db_item->node_list, ann, next);
-    }
-
-    msg->action = ACT_REQUEST_STORE; 
+    msg->action = ACT_REQUEST_STORE;
     msg->pkt.dir = PKT_DIR_TX;
-
-    msg->m.store_value_req.db_item = db_item;
 
     at = azureus_task_new(ad, an, msg);
     if (!at) {
+        azureus_rpc_msg_delete(msg);
         return NULL;
     }
-#if 0
-    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
-        ann = azureus_node_get_ref(tn);
-        TAILQ_INSERT_TAIL(&at->db_node_list, ann, next);
-        /* FIXME: may have task pending, override it!! */
-        fnat = azureus_dht_add_find_node_task(ad, ann, &key);
-        task_add_child_task(&at->task, &fnat->task);
-    }
-#endif
+
+    an->task_pending = at;
+    azureus_dht_add_task(ad, at);
+
+    DEBUG("Added a STORE VALUE task %p\n", at);
+
+    return at;
+}
+
+static int
+azureus_dht_add_db_task(struct azureus_dht *ad, struct azureus_db_item *db_item)
+{
+    struct kbucket_node_search_list_head list;
+    int n_list = 0;
+
+    ASSERT(ad && db_item);
 
     return SUCCESS;
 }
@@ -1064,7 +1041,6 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     int index = 0;
     struct node *n = NULL;
     struct azureus_db_item *item = NULL;
-    struct key dist1, dist2;
     int ret;
 
     ASSERT(ad && an);
@@ -1296,7 +1272,10 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
             continue;
         }
 
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].node_list, kb_next, tnn) {
+        LIST_FOREACH_SAFE(tn, 
+                    &ad->kbucket[(max_index - 1) - index].node_list, 
+                    kb_next, tnn) {
+
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
@@ -1317,8 +1296,10 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 
         if (use_ext) {
 
-            LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].ext_node_list, 
-                                kb_next, tnn) {
+            LIST_FOREACH_SAFE(tn, 
+                    &ad->kbucket[(max_index - 1) - index].ext_node_list, 
+                    kb_next, tnn) {
+
                 an = azureus_node_get_ref(tn);
                 if (!an->alive) {
                     continue;
@@ -1433,7 +1414,7 @@ azureus_dht_db_refresh(struct azureus_dht *ad)
         }
 
         if ((curr_time - item->last_refresh) > STORE_VALUE_TIMEOUT) {
-            azureus_dht_add_store_value_task(ad, ad->this_node, item);
+//            azureus_dht_add_store_value_task(ad, item);
         }
     }
 

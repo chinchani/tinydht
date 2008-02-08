@@ -192,6 +192,7 @@ struct azureus_rpc_store_value_rsp {
 struct azureus_rpc_msg {
     u_int32_t                                   action;
     struct pkt                                  pkt;
+    bool                                        is_encoded;
     union {
         struct azureus_pr_udp_req               pr_udp_req;     /* PR UDP hdr from above */
         struct azureus_pr_udp_rsp               pr_udp_rsp;

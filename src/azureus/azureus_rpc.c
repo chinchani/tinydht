@@ -165,6 +165,12 @@ azureus_rpc_msg_encode(struct azureus_rpc_msg *msg)
 {
     int ret;
 
+    ASSERT(msg);
+
+    if (msg->is_encoded) {
+        return SUCCESS;
+    }
+
     switch (msg->action) {
         case ACT_REQUEST_PING:
             ret = azureus_rpc_ping_req_encode(msg);
@@ -202,11 +208,14 @@ azureus_rpc_msg_encode(struct azureus_rpc_msg *msg)
             return FAILURE;
     }
 
+    /* set the 'is_req' flag appropriately */
     ret = msg_is_rpc_req(msg, &msg->is_req);
     if (ret != SUCCESS) {
         azureus_rpc_msg_delete(msg);
         return FAILURE;
     }
+
+    msg->is_encoded = TRUE;
 
     pkt_dump(&msg->pkt);
 
