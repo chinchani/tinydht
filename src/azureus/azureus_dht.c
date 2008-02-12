@@ -1257,59 +1257,33 @@ azureus_dht_insert_k_closest_node(int k,
     ASSERT(list && n_list && pivot && new);
     ASSERT(*n_list <= k);
 
-    /* case 1 - no nodes in the list */
-    if (*n_list == 0) {
-        ASSERT(TAILQ_EMPTY(list));
+    if (TAILQ_EMPTY(list)) {
         TAILQ_INSERT_TAIL(list, new, next);
-        (*n_list)++;
         return;
     }
 
     key_distance(&pivot->id, &new->id, &dnew);
 
-    /* case 2 - only one node in the list */
-    if (*n_list == 1) {
-        tn = TAILQ_FIRST(list);
-        key_distance(&pivot->id, &tn->id, &d1);
-        if (key_cmp(&dnew, &d1) <= 0) {
-            TAILQ_INSERT_BEFORE(tn, new, next);
-            (*n_list)++;
-            return;
-        } else {
-            TAILQ_INSERT_TAIL(list, new, next);
-            (*n_list)++;
-            return;
-        }
-    }
-
-    /* case 3 - no. of nodes < k */
-    if (*n_list < k) {
-        TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
-            key_distance(&pivot->id, &tn->id, &d1);
-            tnxt = TAILQ_NEXT(tn, next);
-            key_distance(&pivot->id, &tnxt->id, &d2);
-            if (key_cmp(&dnew, &d1) <= 0) {
-                TAILQ_INSERT_BEFORE(tn, new, next);
-                (*n_list)++;
-                return;
-            } else if (key_cmp(&d1, &dnew) <= 0 && key_cmp(&dnew, &d2) <= 0) {
-                TAILQ_INSERT_AFTER(list, tn, new, next);
-                (*n_list)++;
-                return;
-            }
-        }
-
-        /* if we got here, 'new' is the furthest away so far */
-        TAILQ_INSERT_TAIL(list, new, next);
-        (*n_list)++;
-        return;
-    }
-
-    /* case 4 - no. of nodes = k */
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
         key_distance(&pivot->id, &tn->id, &d1);
-        tnxt = TAILQ_NEXT(tn, next);
-        key_distance(&pivot->id, &tnxt->id, &d2);
+        if (tn == TAILQ_LAST(list, kbucket_node_search_list_head)) {
+            if (key_cmp(&dnew, &d1) < 0) {
+                TAILQ_INSERT_BEFORE(tn, new, next);
+            } else {
+                TAILQ_INSERT_AFTER(list, tn, new, next);
+            }
+        } else {
+            tnxt = TAILQ_NEXT(tn, next);
+            key_distance(&pivot->id, &tnxt->id, &d2);
+
+            if (key_cmp(&dnew, &d1) < 0) {
+                TAILQ_INSERT_BEFORE(tn, new, next);
+            } else if (key_cmp(&d1, &dnew) <= 0 && key_cmp(&dnew, &d2) <= 0) {
+                TAILQ_INSERT_AFTER(list, tn, new, next);
+            } else {
+                TAILQ_INSERT_AFTER(list, tnxt, new, next);
+            }
+        }
     }
 
     return;
