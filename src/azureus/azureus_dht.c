@@ -1270,10 +1270,17 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
     key_distance(&pivot->id, &new->id, &dnew);
 
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
+
+        ASSERT(tn != pivot);
+        ASSERT(tn != new);
+
         DEBUG("tn %p\n", tn);
         key_distance(&pivot->id, &tn->id, &d1);
+
         if (tn == TAILQ_LAST(list, kbucket_node_search_list_head)) {
+
             DEBUG("here - 1\n");
+
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
                 break;
@@ -1281,21 +1288,21 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
                 TAILQ_INSERT_AFTER(list, tn, new, next);
                 break;
             }
+
         } else {
+
             DEBUG("here - 2\n");
             tnxt = TAILQ_NEXT(tn, next);
+
             key_distance(&pivot->id, &tnxt->id, &d2);
 
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
                 break;
-            } else if (key_cmp(&d1, &dnew) <= 0 && key_cmp(&dnew, &d2) <= 0) {
+            } else if (key_cmp(&d1, &dnew) < 0 && key_cmp(&dnew, &d2) < 0) {
                 TAILQ_INSERT_AFTER(list, tn, new, next);
                 break;
-            } else {
-                TAILQ_INSERT_AFTER(list, tnxt, new, next);
-                break;
-            }
+            } 
         }
     }
 
