@@ -476,6 +476,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
                 azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
                                     &list, &n_list, PROTOCOL_VERSION_MIN, TRUE);
+
+                DEBUG("n_list %d\n", n_list);
+
                 TAILQ_INIT(&rsp->m.find_node_rsp.node_list);
                 TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
                     an = azureus_node_get_ref(tn);
@@ -1246,16 +1249,18 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 }
 
 static void
-azureus_dht_insert_k_closest_node(int k, 
-                                    struct kbucket_node_search_list_head *list, 
-                                    int *n_list, 
-                                    struct node *pivot, struct node *new)
+azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
+                                        struct node *pivot, struct node *new)
 {
     struct node *tn = NULL, *tnn = NULL, *tnxt = NULL;
     struct key dnew, d1, d2;
 
-    ASSERT(list && n_list && pivot && new);
-    ASSERT(*n_list <= k);
+    ASSERT(list && pivot && new);
+
+    DEBUG("entering ...\n");
+
+    key_dump(&pivot->id);
+    key_dump(&new->id);
 
     if (TAILQ_EMPTY(list)) {
         TAILQ_INSERT_TAIL(list, new, next);
@@ -1265,23 +1270,31 @@ azureus_dht_insert_k_closest_node(int k,
     key_distance(&pivot->id, &new->id, &dnew);
 
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
+        DEBUG("tn %p\n", tn);
         key_distance(&pivot->id, &tn->id, &d1);
         if (tn == TAILQ_LAST(list, kbucket_node_search_list_head)) {
+            DEBUG("here - 1\n");
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
+                break;
             } else {
                 TAILQ_INSERT_AFTER(list, tn, new, next);
+                break;
             }
         } else {
+            DEBUG("here - 2\n");
             tnxt = TAILQ_NEXT(tn, next);
             key_distance(&pivot->id, &tnxt->id, &d2);
 
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
+                break;
             } else if (key_cmp(&d1, &dnew) <= 0 && key_cmp(&dnew, &d2) <= 0) {
                 TAILQ_INSERT_AFTER(list, tn, new, next);
+                break;
             } else {
                 TAILQ_INSERT_AFTER(list, tnxt, new, next);
+                break;
             }
         }
     }
@@ -1300,17 +1313,20 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
     int ret;
     struct node *tn = NULL, *tnn = NULL;
     struct azureus_node *an = NULL;
+    struct kbucket_node_search_list_head sort_list;
 
     ASSERT(ad && key && k && list && n_list); 
 
     TAILQ_INIT(list);
+
+    TAILQ_INIT(&sort_list);
 
     ret = key_distance(&ad->this_node->node.id, key, &dist);
 
     max_index = key->len*8*sizeof(key->data[0]);
 
     /* first, walk forward */
-    for (index = (max_index - 1); (index >= 0) && (count < k); index--) {
+    for (index = (max_index - 1); (index >= 0); index--) {
 
         if (key_nth_bit(&dist, index) != 1) {
             continue;
@@ -1329,10 +1345,9 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 continue;
             }
 
-            if (count == k) {
-                *n_list = count;
-                return SUCCESS;
-            }
+            azureus_dht_insert_sort_closest_node(&sort_list, 
+                                                    &ad->this_node->node, 
+                                                    tn);
         }
 
         if (use_ext) {
@@ -1350,24 +1365,24 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                     continue;
                 }
 
-                TAILQ_INSERT_TAIL(list, tn, next);
-                count++;
-
-                if (count == k) {
-                    *n_list = count;
-                    return SUCCESS;
-                }
+                azureus_dht_insert_sort_closest_node(&sort_list, 
+                                                        &ad->this_node->node, 
+                                                        tn);
             }
         }
     }
 
     /* we walk backwards now */
-    for (index = 0; (index <= (max_index - 1)) && (count < k); index++) {
+    for (index = 0; (index <= (max_index - 1)); index++) {
+
         if (key_nth_bit(&dist, index) != 0) {
             continue;
         }
 
-        LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].node_list, kb_next, tnn) {
+        LIST_FOREACH_SAFE(tn, 
+                    &ad->kbucket[(max_index - 1) - index].node_list, 
+                    kb_next, tnn) {
+
             an = azureus_node_get_ref(tn);
             if (!an->alive) {
                 continue;
@@ -1377,19 +1392,17 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 continue;
             }
 
-            TAILQ_INSERT_TAIL(list, tn, next);
-            count++;
-
-            if (count == k) {
-                *n_list = count;
-                return SUCCESS;
-            }
+            azureus_dht_insert_sort_closest_node(&sort_list, 
+                                                    &ad->this_node->node, 
+                                                    tn);
         }
 
         if (use_ext) {
 
-            LIST_FOREACH_SAFE(tn, &ad->kbucket[(max_index - 1) - index].ext_node_list, 
-                                    kb_next, tnn) {
+            LIST_FOREACH_SAFE(tn, 
+                    &ad->kbucket[(max_index - 1) - index].ext_node_list, 
+                    kb_next, tnn) {
+
                 an = azureus_node_get_ref(tn);
                 if (!an->alive) {
                     continue;
@@ -1399,16 +1412,27 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                     continue;
                 }
 
-                TAILQ_INSERT_TAIL(list, tn, next);
-                count++;
-
-                if (count == k) {
-                    *n_list = count;
-                    return SUCCESS;
-                }
+                azureus_dht_insert_sort_closest_node(&sort_list, 
+                                                    &ad->this_node->node, 
+                                                    tn);
             }
         }
     }
+
+    /* once all the parsing and sorting has been done,
+     * pick the top 'k' nodes */
+
+    count = 0;
+    TAILQ_FOREACH_SAFE(tn, &sort_list, next, tnn) {
+        TAILQ_REMOVE(&sort_list, tn, next);
+        TAILQ_INSERT_TAIL(list, tn, next);
+        count++;
+        if (count == k) {
+            break;
+        }
+    }
+
+    *n_list = count;
 
     return SUCCESS;
 }

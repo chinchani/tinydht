@@ -74,10 +74,12 @@ key_xor(struct key *k1, struct key *k2, struct key *xor)
 
     ASSERT(k1 && k2 && (k1->type == k2->type) && (k1->len == k2->len) && xor);
 
+    xor->type = k1->type;
+    xor->len = k1->len;
+
     for (i = 0; i < k1->len; i++) {
         xor->data[i] = k1->data[i] ^ k2->data[i];
     }
-    xor->len = k1->len;
 
     return SUCCESS;
 }
