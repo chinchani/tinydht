@@ -1014,6 +1014,7 @@ static int
 azureus_dht_add_db_task(struct azureus_dht *ad, struct azureus_db_item *db_item)
 {
     struct kbucket_node_search_list_head list;
+    struct azureus_node *an = NULL;
     struct azureus_task *at = NULL;
     int n_list = 0;
 
