@@ -79,8 +79,10 @@ static bool azureus_dht_contains_node(struct azureus_dht *ad,
 
 static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, 
                                 struct key *key, int k,
+                                struct key *pivot,
                                 struct kbucket_node_search_list_head *list, 
-                                int *n_list, u8 min_proto_ver, bool use_ext);
+                                int *n_list, u8 min_proto_ver, bool use_ext, 
+                                bool use_not_alive);
 static int azureus_dht_get_node_count(struct azureus_dht *ad);
 
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
@@ -471,11 +473,14 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             case ACT_REQUEST_FIND_NODE:
                 rsp->action = ACT_REPLY_FIND_NODE;
                 rsp->m.find_node_rsp.rnd_id = an->rnd_id;
+
                 ret = key_new(&key, KEY_TYPE_SHA1, msg->m.find_node_req.id, 
                         msg->m.find_node_req.id_len);
 
                 azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
-                                    &list, &n_list, PROTOCOL_VERSION_MIN, TRUE);
+                                    &ad->this_node->node.id,
+                                    &list, &n_list, PROTOCOL_VERSION_MIN, 
+                                    TRUE, FALSE);
 
                 DEBUG("n_list %d\n", n_list);
 
@@ -503,14 +508,17 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     DEBUG("valset n_vals %d\n", db_item->valset->n_vals);
 
                 } else {
-                    /* we don't, so send the k-closest nodes */
+                    /* we don't, so send the k-closest nodes instead */
                     rsp->m.find_value_rsp.has_vals = FALSE;
 
                     ret = key_new(&key, KEY_TYPE_SHA1, 
                                     msg->m.find_value_req.key.data, 
                                     msg->m.find_value_req.key.len);
+
                     azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
-                            &list, &n_list, PROTOCOL_VERSION_MIN, TRUE);
+                                        &ad->this_node->node.id,
+                                        &list, &n_list, PROTOCOL_VERSION_MIN, 
+                                        TRUE, FALSE);
 
                     DEBUG("n_list %d\n", n_list);
 
@@ -1006,9 +1014,15 @@ static int
 azureus_dht_add_db_task(struct azureus_dht *ad, struct azureus_db_item *db_item)
 {
     struct kbucket_node_search_list_head list;
+    struct azureus_task *at = NULL;
     int n_list = 0;
 
     ASSERT(ad && db_item);
+
+    at = azureus_task_new(ad, an, NULL);
+    if (!at) {
+        return FAILURE;
+    }
 
     return SUCCESS;
 }
@@ -1250,16 +1264,18 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 
 static void
 azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
-                                        struct node *pivot, struct node *new)
+                                        struct key *pivot, struct node *new, 
+                                        int k)
 {
     struct node *tn = NULL, *tnn = NULL, *tnxt = NULL;
     struct key dnew, d1, d2;
+    int count = 0;
 
     ASSERT(list && pivot && new);
 
     DEBUG("entering ...\n");
 
-    key_dump(&pivot->id);
+    key_dump(pivot);
     key_dump(&new->id);
 
     if (TAILQ_EMPTY(list)) {
@@ -1267,15 +1283,13 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
         return;
     }
 
-    key_distance(&pivot->id, &new->id, &dnew);
+    key_distance(pivot, &new->id, &dnew);
 
+    count = 0;
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
 
-        ASSERT(tn != pivot);
-        ASSERT(tn != new);
-
         DEBUG("tn %p\n", tn);
-        key_distance(&pivot->id, &tn->id, &d1);
+        key_distance(pivot, &tn->id, &d1);
 
         if (tn == TAILQ_LAST(list, kbucket_node_search_list_head)) {
 
@@ -1283,10 +1297,10 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
 
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
-                break;
+                return;
             } else {
                 TAILQ_INSERT_AFTER(list, tn, new, next);
-                break;
+                return;
             }
 
         } else {
@@ -1294,15 +1308,21 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
             DEBUG("here - 2\n");
             tnxt = TAILQ_NEXT(tn, next);
 
-            key_distance(&pivot->id, &tnxt->id, &d2);
+            key_distance(pivot, &tnxt->id, &d2);
 
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
-                break;
+                return;
             } else if (key_cmp(&d1, &dnew) < 0 && key_cmp(&dnew, &d2) < 0) {
                 TAILQ_INSERT_AFTER(list, tn, new, next);
-                break;
+                return;
             } 
+        }
+
+        count++;
+        if (count >= k) {
+            /* "new" node is not a top-k candidate, so just ignore it */
+            return;
         }
     }
 
@@ -1311,8 +1331,10 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
 
 static int
 azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
+                                struct key *pivot,
                                 struct kbucket_node_search_list_head *list, 
-                                int *n_list, u8 min_proto_ver, bool use_ext)
+                                int *n_list, u8 min_proto_ver, bool use_ext, 
+                                bool use_not_alive)
 {
     struct key dist;
     int index, max_index;
@@ -1328,11 +1350,11 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
 
     TAILQ_INIT(&sort_list);
 
-    ret = key_distance(&ad->this_node->node.id, key, &dist);
+    ret = key_distance(pivot, key, &dist);
 
     max_index = key->len*8*sizeof(key->data[0]);
 
-    /* first, walk forward */
+    /* first, walk forward - 159th bit, 158th bit, ... 0th bit */
     for (index = (max_index - 1); (index >= 0); index--) {
 
         if (key_nth_bit(&dist, index) != 1) {
@@ -1353,8 +1375,8 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
             }
 
             azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                    &ad->this_node->node, 
-                                                    tn);
+                                                    &ad->this_node->node.id, 
+                                                    tn, k);
         }
 
         if (use_ext) {
@@ -1373,13 +1395,13 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 }
 
                 azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                        &ad->this_node->node, 
-                                                        tn);
+                                                    &ad->this_node->node.id, 
+                                                    tn, k);
             }
         }
     }
 
-    /* we walk backwards now */
+    /* we walk backwards now - 0th bit, 1st bit ... 159th bit */
     for (index = 0; (index <= (max_index - 1)); index++) {
 
         if (key_nth_bit(&dist, index) != 0) {
@@ -1400,8 +1422,8 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
             }
 
             azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                    &ad->this_node->node, 
-                                                    tn);
+                                                    &ad->this_node->node.id, 
+                                                    tn, k);
         }
 
         if (use_ext) {
@@ -1420,8 +1442,8 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                 }
 
                 azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                    &ad->this_node->node, 
-                                                    tn);
+                                                    &ad->this_node->node.id, 
+                                                    tn, k);
             }
         }
     }
