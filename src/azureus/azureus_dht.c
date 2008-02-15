@@ -99,6 +99,10 @@ static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
 static int azureus_dht_notify_parent_task(struct azureus_task *at, bool status);
+static struct azureus_task * azureus_dht_add_db_task(struct azureus_dht *ad, 
+                                    enum azureus_task_type type, 
+                                    struct azureus_db_key *db_key, 
+                                    struct azureus_db_val *db_val);
 
 static void azureus_dht_update_rpc_stats(struct azureus_dht *ad, u32 action, 
                                 enum pkt_dir dir);
@@ -707,9 +711,9 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 {
     struct azureus_db_item *item = NULL, *itemn = NULL;
     struct azureus_dht *ad = NULL;
-    struct azureus_db_key *k = NULL;
-    struct azureus_db_valset *vs = NULL;
-    struct azureus_db_val *v = NULL;
+    struct azureus_db_key *key = NULL;
+    struct azureus_db_valset *vset = NULL;
+    struct azureus_db_val *val = NULL;
     int ret;
     size_t off, len;
 
@@ -729,30 +733,30 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 
     ad = azureus_dht_get_ref(dht);
 
-    k = azureus_db_key_new();
-    if (!k) {
+    key = azureus_db_key_new();
+    if (!key) {
         return FAILURE;
     }
 
-    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, k->data);
-    k->len = MAX_KEY_SIZE;
+    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, key->data);
+    key->len = MAX_KEY_SIZE;
 
-    vs = azureus_db_valset_new();
-    if (!vs) {
-        azureus_db_key_delete(k);
+    vset = azureus_db_valset_new();
+    if (!vset) {
+        azureus_db_key_delete(key);
         return FAILURE;
     }
 
-    v = azureus_db_val_new();
-    if (!v) {
-        azureus_db_key_delete(k);
-        azureus_db_valset_delete(vs);
+    val = azureus_db_val_new();
+    if (!val) {
+        azureus_db_key_delete(key);
+        azureus_db_valset_delete(vset);
     }
-    v->len = msg->req.val_len;
-    memcpy(v->data, msg->req.val, msg->req.val_len);
-    TAILQ_INSERT_TAIL(&vs->val_list, v, next);
+    val->len = msg->req.val_len;
+    memcpy(val->data, msg->req.val, msg->req.val_len);
+    TAILQ_INSERT_TAIL(&vset->val_list, val, next);
 
-    ret = azureus_dht_add_db_item(ad, k, vs, TRUE);
+    ret = azureus_dht_add_db_item(ad, key, vset, TRUE);
     if (ret != SUCCESS) {
         return FAILURE;
     }
@@ -765,10 +769,10 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 int
 azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 {
-    struct azureus_db_item *item = NULL;
     struct azureus_dht *ad = NULL;
     struct azureus_db_val *val = NULL;
-    struct azureus_db_key key;
+    struct azureus_db_key *key = NULL;
+    struct azureus_task *at = NULL;
 
     DEBUG("GET received\n");
 
@@ -782,20 +786,30 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 
     ad = azureus_dht_get_ref(dht);
 
-    bzero(&key, sizeof(struct azureus_db_key));
-    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, key.data);
-    key.len = MAX_KEY_SIZE;
+    key = azureus_db_key_new();
+    if (!key) {
+        return FAILURE;
+    }
 
+    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, key->data);
+    key->len = MAX_KEY_SIZE;
+
+#if 0
+    /* FIXME: Should we cache the "found" db item? */
     item = azureus_dht_find_db_item(ad, &key);
     if (!item) {
         return FAILURE;
     }
 
-    /* we expect only one value per key today */
+    /* at present, we expect only one value per key */
     val = TAILQ_FIRST(&item->valset->val_list);
 
     memcpy(msg->rsp.val, val->data, val->len);
     msg->rsp.val_len = val->len;
+#endif
+
+    at = azureus_dht_add_db_task(ad, AZUREUS_TASK_TYPE_FIND_VALUE, key, NULL);
+    at->sock = msg->sock;
 
     DEBUG("GET successful\n");
 
@@ -1010,19 +1024,43 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
     return at;
 }
 
-static int
-azureus_dht_add_db_task(struct azureus_dht *ad, struct azureus_db_item *db_item)
+static struct azureus_task *
+azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type, 
+                        struct azureus_db_key *db_key, 
+                        struct azureus_db_val *db_val)
 {
-    struct kbucket_node_search_list_head list;
     struct azureus_node *an = NULL;
     struct azureus_task *at = NULL;
+    struct key key;
+    struct kbucket_node_search_list_head list;
     int n_list = 0;
+    struct node *tn = NULL, *tnn = NULL;
 
-    ASSERT(ad && db_item);
+    ASSERT(ad && type && db_key);
 
-    at = azureus_task_new(ad, an, NULL);
+    at = azureus_task_new(ad, ad->this_node, NULL);
     if (!at) {
         return FAILURE;
+    }
+
+    bzero(&key, sizeof(key));
+    key_new(&key, KEY_TYPE_SHA1, db_key->data, db_key->len);
+
+    TAILQ_INIT(&list);
+
+    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
+                                        &ad->this_node->node.id,
+                                        &list, &n_list, PROTOCOL_VERSION_MIN, 
+                                        TRUE, TRUE);
+
+    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+        an = azureus_node_get_ref(tn);
+        if (an->last_find_node) {
+            /* we can directly do a 'store value' here because we have the
+             * spoof id */
+        } else {
+            /* we first need to send a 'find node' on this node */
+        }
     }
 
     return SUCCESS;
@@ -1274,8 +1312,6 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
 
     ASSERT(list && pivot && new);
 
-    DEBUG("entering ...\n");
-
     key_dump(pivot);
     key_dump(&new->id);
 
@@ -1285,16 +1321,17 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
     }
 
     key_distance(pivot, &new->id, &dnew);
+    key_dump(&dnew);
 
     count = 0;
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
 
-        DEBUG("tn %p\n", tn);
+        // DEBUG("tn %p\n", tn);
         key_distance(pivot, &tn->id, &d1);
 
         if (tn == TAILQ_LAST(list, kbucket_node_search_list_head)) {
 
-            DEBUG("here - 1\n");
+            // DEBUG("here - 1\n");
 
             if (key_cmp(&dnew, &d1) < 0) {
                 TAILQ_INSERT_BEFORE(tn, new, next);
@@ -1306,7 +1343,7 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
 
         } else {
 
-            DEBUG("here - 2\n");
+            // DEBUG("here - 2\n");
             tnxt = TAILQ_NEXT(tn, next);
 
             key_distance(pivot, &tnxt->id, &d2);
@@ -1321,7 +1358,8 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
         }
 
         count++;
-        if (count >= k) {
+        ASSERT(count <= k);
+        if (count == k) {
             /* "new" node is not a top-k candidate, so just ignore it */
             return;
         }

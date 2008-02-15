@@ -26,6 +26,12 @@ struct azureus_rpc_msg;
 #include "azureus_node.h"
 #include "azureus_db.h"
 
+enum azureus_task_type {
+    AZUREUS_TASK_TYPE_UNKNOWN = 0,
+    AZUREUS_TASK_TYPE_FIND_VALUE,
+    AZUREUS_TASK_TYPE_STORE_VALUE
+};
+
 struct azureus_task {
     struct task                 task;
     int                         retries;
