@@ -33,6 +33,7 @@ enum azureus_task_type {
 };
 
 struct azureus_task {
+    enum azureus_task_type      type;
     struct task                 task;
     int                         retries;
     struct azureus_dht          *dht;

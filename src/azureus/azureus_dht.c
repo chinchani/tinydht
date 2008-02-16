@@ -267,6 +267,11 @@ azureus_dht_task_schedule(struct dht *dht)
 
     /* the main task processing loop */
     TAILQ_FOREACH_SAFE(at, &ad->task_list, next, atn) {
+
+        if (at->task.type == TASK_TYPE_PARENT) {
+            continue;
+        }
+
         if (at->task.state == TASK_STATE_WAIT) {
             /* was there a timeout? */
             if ((curr_time - at->task.access_time) < AZUREUS_RPC_TIMEOUT) {
@@ -1030,18 +1035,21 @@ azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type,
                         struct azureus_db_val *db_val)
 {
     struct azureus_node *an = NULL;
-    struct azureus_task *at = NULL;
+    struct azureus_task *parent = NULL, *child = NULL;
     struct key key;
     struct kbucket_node_search_list_head list;
     int n_list = 0;
     struct node *tn = NULL, *tnn = NULL;
+    bool need_find_node = FALSE;
 
     ASSERT(ad && type && db_key);
 
-    at = azureus_task_new(ad, ad->this_node, NULL);
-    if (!at) {
-        return FAILURE;
+    parent = azureus_task_new(ad, ad->this_node, NULL);
+    if (!parent) {
+        return NULL;
     }
+
+    parent->type = type;
 
     bzero(&key, sizeof(key));
     key_new(&key, KEY_TYPE_SHA1, db_key->data, db_key->len);
@@ -1055,15 +1063,36 @@ azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type,
 
     TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
         an = azureus_node_get_ref(tn);
-        if (an->last_find_node) {
-            /* we can directly do a 'store value' here because we have the
-             * spoof id */
-        } else {
-            /* we first need to send a 'find node' on this node */
+        if (!an->last_find_node) {
+            /* we first need to send a 'find node' on this node, so that we can
+             * get the random spoof id */
+            child = azureus_dht_add_find_node_task(ad, an, &key);
+            task_add_child_task(&parent->task, &child->task);
+            need_find_node = TRUE;
+        } else if (an->task_pending) {
+            /* there is a task pending on this node already! */
+            need_find_node = TRUE;
         }
     }
 
-    return SUCCESS;
+    if (need_find_node) {
+        goto out;
+    }
+
+    /* we don't need to any 'find node's, so we can directly do either a
+     * find/store value on the k-closest nodes */
+
+    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+        an = azureus_node_get_ref(tn);
+        if (parent->type == AZUREUS_TASK_TYPE_FIND_VALUE) {
+            /* send a find value request */
+        } else if (parent->type == AZUREUS_TASK_TYPE_STORE_VALUE) {
+            /* send a store value request */
+        }
+    }
+
+out:
+    return parent;
 }
 
 static int
@@ -1312,6 +1341,8 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
 
     ASSERT(list && pivot && new);
 
+    DEBUG("entering ...\n");
+
     key_dump(pivot);
     key_dump(&new->id);
 
@@ -1405,7 +1436,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                     kb_next, tnn) {
 
             an = azureus_node_get_ref(tn);
-            if (!an->alive) {
+            if (!use_not_alive && !an->alive) {
                 continue;
             }
 
@@ -1425,7 +1456,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                     kb_next, tnn) {
 
                 an = azureus_node_get_ref(tn);
-                if (!an->alive) {
+                if (!use_not_alive && !an->alive) {
                     continue;
                 }
 
@@ -1452,7 +1483,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                     kb_next, tnn) {
 
             an = azureus_node_get_ref(tn);
-            if (!an->alive) {
+            if (!use_not_alive && !an->alive) {
                 continue;
             }
 
@@ -1472,7 +1503,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad, struct key *key, int k,
                     kb_next, tnn) {
 
                 an = azureus_node_get_ref(tn);
-                if (!an->alive) {
+                if (!use_not_alive && !an->alive) {
                     continue;
                 }
 

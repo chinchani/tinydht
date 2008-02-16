@@ -53,7 +53,7 @@ void
 azureus_task_delete(struct azureus_task *at)
 {
     struct task *task = NULL;
-    struct pkt *pkt = NULL, *pktn = NULL;
+    struct pkt *pkt = NULL;
     struct azureus_node *an = NULL;
     struct azureus_rpc_msg *msg = NULL;
     struct azureus_dht *ad = NULL;

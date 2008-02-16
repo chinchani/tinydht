@@ -31,6 +31,7 @@ task_new(struct task *task, struct dht *dht, struct node *node, struct pkt *pkt)
     task->node = node;
     task->creation_time = dht_get_current_time();
     task->pkt = pkt;
+    task->type = TASK_TYPE_CHILD;
 
     return SUCCESS;
 }
@@ -64,6 +65,7 @@ task_add_child_task(struct task *parent, struct task *child)
     parent->n_child++;
 
     child->parent = parent;
+    parent->type = TASK_TYPE_PARENT;
 
     return SUCCESS;
 }

@@ -26,6 +26,12 @@ struct dht;
 #include "queue.h"
 #include "node.h"
 
+enum task_type {
+    TASK_TYPE_UNKNOWN = 0,
+    TASK_TYPE_CHILD,
+    TASK_TYPE_PARENT
+};
+
 enum task_state {
     TASK_STATE_UNKNOWN = 0,
     TASK_STATE_WAIT,
@@ -33,6 +39,7 @@ enum task_state {
 };
 
 struct task {
+    enum task_type                      type;
     enum task_state                     state;
     u64                                 creation_time;
     u64                                 access_time;
