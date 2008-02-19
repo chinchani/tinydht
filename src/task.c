@@ -25,13 +25,17 @@
 int
 task_new(struct task *task, struct dht *dht, struct node *node, struct pkt *pkt)
 {
-    ASSERT(task && dht && node && pkt);
+    ASSERT(task && dht && node);
 
     bzero(task, sizeof(struct task));
     task->node = node;
     task->creation_time = dht_get_current_time();
-    task->pkt = pkt;
     task->type = TASK_TYPE_CHILD;
+    if (pkt) {
+        task->pkt = pkt;
+    }
+
+    TAILQ_INIT(&task->child_list);
 
     return SUCCESS;
 }

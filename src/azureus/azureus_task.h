@@ -37,7 +37,8 @@ struct azureus_task {
     struct task                 task;
     int                         retries;
     struct azureus_dht          *dht;
-    struct azureus_db_item      *db_item;
+    struct azureus_db_key       *db_key;
+    struct azureus_db_valset    *db_valset;
     TAILQ_ENTRY(azureus_task)   next;
     TAILQ_HEAD(db_node_list, azureus_node) db_node_list;
     int                         sock;

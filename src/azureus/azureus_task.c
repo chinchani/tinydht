@@ -28,7 +28,7 @@ azureus_task_new(struct azureus_dht *ad, struct azureus_node *an,
 {
     struct azureus_task *at = NULL;
 
-    ASSERT(ad && an && msg);
+    ASSERT(ad && an);
 
     at = (struct azureus_task *) malloc(sizeof(struct azureus_task));
     if (!at) {
@@ -39,7 +39,11 @@ azureus_task_new(struct azureus_dht *ad, struct azureus_node *an,
 
     bzero(at, sizeof(struct azureus_task));
 
-    task_new(&at->task, &ad->dht, &an->node, &msg->pkt);
+    if (msg) {
+        task_new(&at->task, &ad->dht, &an->node, &msg->pkt);
+    } else {
+        task_new(&at->task, &ad->dht, &an->node, NULL);
+    }
     at->retries = MAX_RPC_RETRIES;
     at->dht = ad;
     an->task_pending = at;

@@ -180,7 +180,6 @@ struct azureus_rpc_store_value_req {
     TAILQ_HEAD(store_value_req_key_list_head, azureus_db_key) key_list;
     u8                          n_valsets;
     TAILQ_HEAD(store_value_req_valset_list_head, azureus_db_valset) valset_list;
-    struct azureus_db_item      *db_item;
 };
 
 struct azureus_rpc_store_value_rsp {

@@ -64,9 +64,10 @@ static struct azureus_task * azureus_dht_add_find_value_task(
                                             struct azureus_node *an, 
                                             struct azureus_db_key *key);
 static struct azureus_task * azureus_dht_add_store_value_task(
-                                            struct azureus_dht *ad, 
-                                            struct azureus_node *an,
-                                            struct azureus_db_item *db_item);
+                                        struct azureus_dht *ad, 
+                                        struct azureus_node *an,
+                                        struct azureus_db_key *db_key,
+                                        struct azureus_db_valset *db_valset);
 static int azureus_dht_add_node(struct azureus_dht *ad, 
                             struct azureus_node *an);
 static int azureus_dht_delete_node(struct azureus_dht *ad, 
@@ -98,11 +99,13 @@ static int azureus_dht_delete_db_item(struct azureus_dht *ad,
 static struct azureus_db_item * azureus_dht_find_db_item(
                                             struct azureus_dht *ad, 
                                             struct azureus_db_key *db_key);
-static int azureus_dht_notify_parent_task(struct azureus_task *at, bool status);
+static int azureus_dht_notify_parent_task(struct azureus_dht *ad, 
+                                            struct azureus_task *achild, 
+                                            bool status);
 static struct azureus_task * azureus_dht_add_db_task(struct azureus_dht *ad, 
                                     enum azureus_task_type type, 
                                     struct azureus_db_key *db_key, 
-                                    struct azureus_db_val *db_val);
+                                    struct azureus_db_valset *db_valset);
 
 static void azureus_dht_update_rpc_stats(struct azureus_dht *ad, u32 action, 
                                 enum pkt_dir dir);
@@ -284,7 +287,7 @@ azureus_dht_task_schedule(struct dht *dht)
                 an = azureus_node_get_ref(at->task.node);
                 ASSERT(an);
                 if (at->task.parent) {
-                    azureus_dht_notify_parent_task(at, FAILURE);
+                    azureus_dht_notify_parent_task(ad, at, FAILURE);
                 } else {
                     azureus_dht_delete_task(ad, at);      
                 }
@@ -654,7 +657,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 }
 
                 if (at->task.parent) {
-                    azureus_dht_notify_parent_task(at, SUCCESS);
+                    azureus_dht_notify_parent_task(ad, at, SUCCESS);
                 }
 
                 break;
@@ -777,7 +780,7 @@ int
 azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 {
     struct azureus_dht *ad = NULL;
-    struct azureus_db_key *key = NULL;
+    struct azureus_db_key *db_key = NULL;
     struct azureus_task *at = NULL;
 
     DEBUG("GET received\n");
@@ -792,13 +795,13 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
 
     ad = azureus_dht_get_ref(dht);
 
-    key = azureus_db_key_new();
-    if (!key) {
+    db_key = azureus_db_key_new();
+    if (!db_key) {
         return FAILURE;
     }
 
-    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, key->data);
-    key->len = MAX_KEY_SIZE;
+    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, db_key->data);
+    db_key->len = MAX_KEY_SIZE;
 
 #if 0
     /* FIXME: Should we cache the "found" db item? */
@@ -814,7 +817,8 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     msg->rsp.val_len = val->len;
 #endif
 
-    at = azureus_dht_add_db_task(ad, AZUREUS_TASK_TYPE_FIND_VALUE, key, NULL);
+    at = azureus_dht_add_db_task(ad, AZUREUS_TASK_TYPE_FIND_VALUE, 
+                                    db_key, NULL);
     at->sock = msg->sock;
 
     DEBUG("GET successful\n");
@@ -996,7 +1000,7 @@ azureus_dht_find_value_task_new(struct azureus_dht *ad,
 
     msg->m.find_value_req.flags = FLAG_SINGLE_VALUE;
     msg->m.find_value_req.max_vals = AZUREUS_MAX_VALS_PER_KEY;
-    memcpy(&msg->m.find_value_req.key, &key, sizeof(key));
+    memcpy(&msg->m.find_value_req.key, db_key, sizeof(struct azureus_db_key));
 
     at = azureus_task_new(ad, an, msg);
     if (!at) {
@@ -1040,16 +1044,17 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
 static struct azureus_task *
 azureus_dht_store_value_task_new(struct azureus_dht *ad, 
                                     struct azureus_node *an,
-                                    struct azureus_db_item *db_item)
+                                    struct azureus_db_key *db_key,
+                                    struct azureus_db_valset *db_valset)
 {
     struct azureus_rpc_msg *msg = NULL;
     struct azureus_task *at = NULL;
     struct key key;
     int ret;
 
-    ASSERT(ad && an && db_item);
+    ASSERT(ad && an && db_key && db_valset);
 
-    ret = key_new(&key, KEY_TYPE_SHA1, db_item->key->data, db_item->key->len);
+    ret = key_new(&key, KEY_TYPE_SHA1, db_key->data, db_key->len);
     if (ret != SUCCESS) {
         return NULL;
     }
@@ -1062,6 +1067,10 @@ azureus_dht_store_value_task_new(struct azureus_dht *ad,
 
     msg->action = ACT_REQUEST_STORE;
     msg->pkt.dir = PKT_DIR_TX;
+    TAILQ_INIT(&msg->m.store_value_req.key_list);
+    TAILQ_INSERT_TAIL(&msg->m.store_value_req.key_list, db_key, next);
+    TAILQ_INIT(&msg->m.store_value_req.valset_list);
+    TAILQ_INSERT_TAIL(&msg->m.store_value_req.valset_list, db_valset, next);
 
     at = azureus_task_new(ad, an, msg);
     if (!at) {
@@ -1075,14 +1084,15 @@ azureus_dht_store_value_task_new(struct azureus_dht *ad,
 static struct azureus_task *
 azureus_dht_add_store_value_task(struct azureus_dht *ad, 
                                     struct azureus_node *an,
-                                    struct azureus_db_item *db_item)
+                                    struct azureus_db_key *db_key,
+                                    struct azureus_db_valset *db_valset)
 {
     struct azureus_task *at = NULL;
     int ret;
 
-    ASSERT(ad && an && db_item);
+    ASSERT(ad && an && db_key && db_valset);
 
-    at = azureus_dht_store_value_task_new(ad, an, db_item);
+    at = azureus_dht_store_value_task_new(ad, an, db_key, db_valset);
     if (!at) {
         return NULL;
     }
@@ -1097,7 +1107,7 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
 static struct azureus_task *
 azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type, 
                         struct azureus_db_key *db_key, 
-                        struct azureus_db_val *db_val)
+                        struct azureus_db_valset *db_valset)
 {
     struct azureus_node *an = NULL;
     struct azureus_task *aparent = NULL, *achild = NULL;
@@ -1106,6 +1116,7 @@ azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type,
     int n_list = 0;
     struct node *tn = NULL, *tnn = NULL;
     bool need_find_node = FALSE;
+    struct azureus_task *fvt = NULL, *svt = NULL;
 
     ASSERT(ad && type && db_key);
 
@@ -1115,6 +1126,7 @@ azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type,
     }
 
     aparent->type = type;
+    aparent->db_key = db_key;
 
     azureus_dht_add_task(ad, aparent);
 
@@ -1135,10 +1147,12 @@ azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type,
              * get the random spoof id */
             achild = azureus_dht_find_node_task_new(ad, an, &key);
             if (!achild) {
-                ASSERT(0);
+                ASSERT(0);      /* FIXME: need a better way to handle this! */
             }
+
             task_add_child_task(&aparent->task, &achild->task);
             azureus_dht_add_task(ad, achild);
+
             need_find_node = TRUE;
         } 
     }
@@ -1156,8 +1170,23 @@ azureus_dht_add_db_task(struct azureus_dht *ad, enum azureus_task_type type,
         an = azureus_node_get_ref(tn);
         if (type == AZUREUS_TASK_TYPE_FIND_VALUE) {
             /* send a find value request */
+            fvt = azureus_dht_find_value_task_new(ad, an, db_key);
+            if (!fvt) {
+                ASSERT(0);      /* FIXME: need a better way to handle this! */
+            }
+
+            task_add_child_task(&aparent->task, &fvt->task);
+            azureus_dht_add_task(ad, fvt);
+
         } else if (type == AZUREUS_TASK_TYPE_STORE_VALUE) {
             /* send a store value request */
+            svt = azureus_dht_store_value_task_new(ad, an, db_key, db_valset);
+            if (!svt) {
+                ASSERT(0);      /* FIXME: need a better way to handle this! */
+            }
+
+            task_add_child_task(&aparent->task, &svt->task);
+            azureus_dht_add_task(ad, svt);
         }
     }
 
@@ -1166,25 +1195,33 @@ out:
 }
 
 static int
-azureus_dht_notify_parent_task(struct azureus_task *at, bool status)
+azureus_dht_notify_parent_task(struct azureus_dht *ad, 
+                                struct azureus_task *achild, bool status)
 {
     struct azureus_node *tn = NULL;
-    struct azureus_task *pat = NULL;
+    struct azureus_task *aparent = NULL;
     struct azureus_rpc_msg *msg = NULL;
 
-    ASSERT(at);
+    ASSERT(ad && achild);
 
-    pat = azureus_task_get_ref(at->task.parent);
-    ASSERT(pat);
+    ASSERT(achild->task.parent);
+    aparent = azureus_task_get_ref(achild->task.parent);
+    ASSERT(aparent);
 
-    msg = azureus_rpc_msg_get_ref(pat->task.pkt);
-
-    switch (msg->action) {
-        case ACT_REQUEST_FIND_VALUE:
-        case ACT_REQUEST_STORE:
+    switch (aparent->type) {
+        case AZUREUS_TASK_TYPE_FIND_VALUE:
+        case AZUREUS_TASK_TYPE_STORE_VALUE:
             break;
+
         default:
             ASSERT(0);
+    }
+
+    task_remove_child_task(&achild->task);
+    azureus_dht_delete_task(ad, achild);
+
+    if (aparent->task.n_child == 0) {
+        azureus_dht_delete_task(ad, aparent);
     }
 
     return SUCCESS;
