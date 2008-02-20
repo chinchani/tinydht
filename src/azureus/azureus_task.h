@@ -28,6 +28,8 @@ struct azureus_rpc_msg;
 
 enum azureus_task_type {
     AZUREUS_TASK_TYPE_UNKNOWN = 0,
+    AZUREUS_TASK_TYPE_PING,
+    AZUREUS_TASK_TYPE_FIND_NODE,
     AZUREUS_TASK_TYPE_FIND_VALUE,
     AZUREUS_TASK_TYPE_STORE_VALUE
 };
@@ -42,6 +44,7 @@ struct azureus_task {
     TAILQ_ENTRY(azureus_task)   next;
     TAILQ_HEAD(db_node_list, azureus_node) db_node_list;
     int                         sock;
+    TAILQ_ENTRY(azureus_task)   next_pending;
 };
 
 static inline struct azureus_task *
