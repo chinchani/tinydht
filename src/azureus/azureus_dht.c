@@ -202,7 +202,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
                             POSITION_TYPE_VIVALDI_V2, 100.0f, 100.0f, 100.0f);
 
     /* bootstrap from "dht.aelitis.com:6881" */
-    he = gethostbyname(DHT_BOOTSTRAP_HOST);
+    he = gethostbyname(AZUREUS_BOOTSTRAP_HOST);
     if (!he) {
         ERROR("%s\n", hstrerror(h_errno));
         azureus_dht_delete(&ad->dht);
@@ -213,7 +213,7 @@ azureus_dht_new(struct dht_net_if *nif, int port)
     ss.ss_family = AF_INET;
     memcpy(&(((struct sockaddr_in *)&ss)->sin_addr), he->h_addr, 
                 sizeof(struct in_addr));
-    ((struct sockaddr_in *)&ss)->sin_port = htons(DHT_BOOTSTRAP_PORT);
+    ((struct sockaddr_in *)&ss)->sin_port = htons(AZUREUS_BOOTSTRAP_PORT);
 
     bootstrap = azureus_node_new(ad, PROTOCOL_VERSION_MAIN, &ss);
     if (!bootstrap) {
@@ -684,9 +684,19 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                         azureus_dht_add_node(ad, tan);
                     }
                 }
+
+                if (at->task.parent) {
+                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS);
+                }
+
                 break;
 
             case ACT_REPLY_STORE:
+                
+                if (at->task.parent) {
+                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS);
+                }
+
                 break;
 
             default:
@@ -857,7 +867,7 @@ azureus_dht_add_task(struct azureus_dht *ad, struct azureus_task *at)
 
     an = azureus_node_get_ref(at->task.node);
 
-    azureus_node_add_pending_task(an, at);
+    azureus_node_add_task(an, at);
 
     TAILQ_INSERT_TAIL(&ad->task_list, at, next);
     ad->n_tasks++;
@@ -877,7 +887,7 @@ azureus_dht_delete_task(struct azureus_dht *ad, struct azureus_task *at)
     TAILQ_REMOVE(&ad->task_list, at, next);
     ad->n_tasks--;
 
-    azureus_node_delete_pending_task(an, at);
+    azureus_node_delete_task(an, at);
 
     azureus_task_delete(at);
 
@@ -923,7 +933,7 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
         return NULL;
     }
 
-    if ((ad->bootstrap != an) && an->n_pending_task) {
+    if ((ad->bootstrap != an) && an->n_task) {
         return NULL;
     }
 
@@ -982,7 +992,7 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
         return NULL;
     }
 
-    if ((ad->bootstrap != an) && an->n_pending_task) {
+    if ((ad->bootstrap != an) && an->n_task) {
         return NULL;
     }
 
@@ -1035,6 +1045,8 @@ azureus_dht_find_value_task_new(struct azureus_dht *ad,
         azureus_rpc_msg_delete(msg);
         return NULL;
     }
+
+    at->type = AZUREUS_TASK_TYPE_FIND_VALUE;
 
     return at;
 }
@@ -1107,6 +1119,8 @@ azureus_dht_store_value_task_new(struct azureus_dht *ad,
         azureus_rpc_msg_delete(msg);
         return NULL;
     }
+
+    at->type = AZUREUS_TASK_TYPE_STORE_VALUE;
 
     return at;
 }
@@ -1206,39 +1220,11 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     aparent->type = type;
     aparent->db_key = db_key;
 
-//    azureus_dht_add_task(ad, aparent);
-
     bzero(&key, sizeof(key));
     key_new(&key, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
     azureus_dht_add_find_node_db_task(ad, aparent, &key, &list, &n_list, 
                                         &need_find_node);
-
-#if 0
-    TAILQ_INIT(&list);
-
-    azureus_dht_get_k_closest_nodes(ad, &key, AZUREUS_K, 
-                                        &ad->this_node->node.id,
-                                        &list, &n_list, PROTOCOL_VERSION_MIN, 
-                                        TRUE, TRUE);
-
-    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
-        an = azureus_node_get_ref(tn);
-        if (!an->last_find_node) {
-            /* we first need to send a 'find node' on this node, so that we can
-             * get the random spoof id */
-            achild = azureus_dht_find_node_task_new(ad, an, &key);
-            if (!achild) {
-                ASSERT(0);      /* FIXME: need a better way to handle this! */
-            }
-
-            task_add_child_task(&aparent->task, &achild->task);
-            azureus_dht_add_task(ad, achild);
-
-            need_find_node = TRUE;
-        } 
-    }
-#endif
 
     DEBUG("need_find_node %d\n", need_find_node);
         
@@ -1309,8 +1295,6 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
         return SUCCESS;
     }
 
-    ASSERT(0);
-
     switch (achild->type) {
 
         case AZUREUS_TASK_TYPE_FIND_NODE:
@@ -1324,15 +1308,35 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
 
             azureus_dht_add_find_node_db_task(ad, aparent, &key, 
                                             &list, &n_list, &need_find_node);
-            ASSERT(0);
+
+            if (need_find_node) {
+                /* more work to do, and more waiting, so cannot delete the
+                 * parent task yet! */
+                goto out;
+            }
+
+            break;
+
+        case AZUREUS_TASK_TYPE_FIND_VALUE:
+            /* we may either get a list of nodes, or the value itself 
+             * - if we get a list of nodes, then we need to check if there is a
+             *   node which is closer than the ones which we have already
+             *   queried.
+             * - if we get a value, then store it and on a majority, return the
+             *   value to the caller.
+             */
+            break;
+
+        case AZUREUS_TASK_TYPE_STORE_VALUE:
             break;
 
         default:
             break;
     }
 
-    azureus_dht_delete_task(ad, aparent);
+    azureus_task_delete(aparent);
 
+out:
     return SUCCESS;
 }
 
@@ -1467,7 +1471,6 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     struct azureus_node *an = NULL;
     u64 curr_time = 0;
     int index, max_index;
-    struct key rnd_id;
 
     ASSERT(ad);
 
@@ -1487,9 +1490,13 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 
             an = azureus_node_get_ref(node);
 
+            /* if this node is a bootstrap node, then
+             * 1. If there are more than 1 node(s), then do nothing
+             * 2. Else, add a ping and a find node task
+             */
             if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
                 if ((azureus_dht_get_node_count(ad) > 1) 
-                        || an->n_pending_task) {
+                        || an->n_task) {
                     continue;
                 }
 
@@ -1499,45 +1506,45 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
                 continue;
             }
 
-            if (!an->failures && (curr_time - an->last_find_node) > FIND_NODE_TIMEOUT) {
-                /* create a find_node task */
+            /* task already scheduled on this node? */
+            if (an->n_task) {
+                continue;
+            }
+
+            /* If there have been no failures, and it is time to do a find node
+             * then schedule a task for this node */
+            if (!an->failures 
+                    && (curr_time - an->last_find_node) > FIND_NODE_TIMEOUT) {
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
                 continue;
             }
 
-            if (!an->alive && an->failures && (an->failures < MAX_RPC_FAILURES)) {
+            /* If not alive, and there was at least one failure, and we have
+             * not reached max. failures, 
+             * then schedule a ping task for this * node */
+            if (!an->alive 
+                    && an->failures 
+                    && (an->failures < MAX_RPC_FAILURES)) {
                 azureus_dht_add_ping_task(ad, an);
                 continue;
             }
-#if 0
-            if ((curr_time - an->last_ping) > PING_TIMEOUT) {
-                /* create a ping task */
-                azureus_dht_add_ping_task(ad, an);
-                continue;
-            }
-
-            if (an->alive && ((curr_time - kbucket->last_refresh) 
-                                                > KBUCKET_REFRESH_TIMEOUT)) {
-                /* create a find_node task for random id */
-                DEBUG("find node rnd_id - index %d\n", index);
-                key_new(&rnd_id, KEY_TYPE_RANDOM, NULL, 0);
-                azureus_dht_add_find_node_task(ad, an, &rnd_id);
-                kbucket->last_refresh = curr_time;
-            }
-#endif
         }
 
+        /* For nodes to the extended routing table, only schedule ping tasks
+         * because we want to let them know we are alive, and that is about it
+         */
         LIST_FOREACH_SAFE(node, &kbucket->ext_node_list, kb_next, noden) {
 
             an = azureus_node_get_ref(node);
 
-            if (!an->alive && an->failures && (an->failures < MAX_RPC_FAILURES)) {
+            if (!an->alive 
+                    && an->failures
+                    && (an->failures < MAX_RPC_FAILURES)) {
                 azureus_dht_add_ping_task(ad, an);
                 continue;
             }
 
             if ((curr_time - an->last_ping) > PING_TIMEOUT) {
-                /* create a ping task */
                 azureus_dht_add_ping_task(ad, an);
                 continue;
             }

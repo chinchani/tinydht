@@ -45,9 +45,9 @@ struct azureus_node {
     u32                                 rnd_id;         /* anti-spoof */
     u32                                 my_rnd_id;
     struct azureus_vivaldi_pos          viv_pos[MAX_RPC_VIVALDI_POS];
-    int                                 n_pending_task;
+    int                                 n_task;
     TAILQ_HEAD(pending_task_list, azureus_task)
-                                        pending_task_list;
+                                        task_list;
     bool                                alive;
     u64                                 last_ping;
     u64                                 last_find_node;
@@ -74,5 +74,8 @@ void azureus_node_delete(struct azureus_node *n);
 int azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, 
                         u8 proto_ver);
 int azureus_node_get_spoof_id(struct azureus_node *an, u32 *id);
+
+void azureus_node_add_task(struct azureus_node *an, struct azureus_task *at);
+void azureus_node_delete_task(struct azureus_node *an, struct azureus_task *at);
 
 #endif /* AZUREUS_NODE_H__ */

@@ -85,12 +85,9 @@ task_remove_child_task(struct task *child)
     parent = child->parent;
     ASSERT(parent);
 
-    TAILQ_FOREACH_SAFE(tn, &parent->child_list, child_next, tnn) {
-        if (tn == child) {
-            TAILQ_REMOVE(&parent->child_list, tn, child_next);
-            break;
-        }
-    }
+    TAILQ_REMOVE(&parent->child_list, child, child_next);
+    parent->n_child--;
+    child->parent = NULL;
 
     return SUCCESS;
 }

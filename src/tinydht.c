@@ -788,17 +788,15 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
 
     if (action != SUCCESS) {
         msg->rsp.status = TINYDHT_RESPONSE_FAILURE;
-    } else {
-        msg->rsp.status = TINYDHT_RESPONSE_SUCCESS;
-    }
 
-    ret = send(sock, &msg->rsp, sizeof(msg->rsp), 0);
-    if (ret < 0) {
-        ERROR("send() - %s\n", strerror(errno));
-    }
+        ret = send(sock, &msg->rsp, sizeof(msg->rsp), 0);
+        if (ret < 0) {
+            ERROR("send() - %s\n", strerror(errno));
+        }
 
-    close(sock);
-    free(msg);
+        close(sock);
+        free(msg);
+    }
 
     return SUCCESS;
 

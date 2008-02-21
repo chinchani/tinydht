@@ -74,7 +74,7 @@ azureus_node_new(struct azureus_dht *ad, u8 proto_ver,
     an->node_status = AZUREUS_NODE_STATUS_ROUTABLE;
     an->dht = ad;
 
-    TAILQ_INIT(&an->pending_task_list);
+    TAILQ_INIT(&an->task_list);
 
     return an;
 
@@ -193,15 +193,15 @@ azureus_node_get_spoof_id(struct azureus_node *an, u32 *id)
 }
 
 void
-azureus_node_add_pending_task(struct azureus_node *an, struct azureus_task *at)
+azureus_node_add_task(struct azureus_node *an, struct azureus_task *at)
 {
-    TAILQ_INSERT_TAIL(&an->pending_task_list, at, next_pending);
-    an->n_pending_task++;
+    TAILQ_INSERT_TAIL(&an->task_list, at, next_pending);
+    an->n_task++;
 }
 
 void
-azureus_node_delete_pending_task(struct azureus_node *an, struct azureus_task *at)
+azureus_node_delete_task(struct azureus_node *an, struct azureus_task *at)
 {
-    TAILQ_REMOVE(&an->pending_task_list, at, next_pending);
-    an->n_pending_task--;
+    TAILQ_REMOVE(&an->task_list, at, next_pending);
+    an->n_task--;
 }

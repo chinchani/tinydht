@@ -21,6 +21,15 @@
 
 struct azureus_dht;
 
+#define AZUREUS_BOOTSTRAP_HOST  "dht.aelitis.com"
+#define AZUREUS_BOOTSTRAP_PORT  6881
+
+#define AZUREUS_K               20      /* max no. of nodes in a kbucket */
+#define AZUREUS_W               4
+
+#define AZUREUS_RPC_TIMEOUT     ((u64)20*1000*1000)
+/* 20 seconds */
+
 #include "types.h"
 #include "dht.h"
 #include "kbucket.h"
@@ -82,15 +91,6 @@ struct azureus_dht {
         struct azureus_dht_rpc_stats    rpc;
     } stats;
 };
-
-#define DHT_BOOTSTRAP_HOST      "dht.aelitis.com"
-#define DHT_BOOTSTRAP_PORT      6881
-
-#define AZUREUS_K               20      /* max no. of nodes in a kbucket */
-#define AZUREUS_W               4
-
-#define AZUREUS_RPC_TIMEOUT     ((u64)20*1000*1000)
-/* 20 seconds */
 
 #define MAX_RPC_RETRIES         0
 #define MAX_RPC_FAILURES        3

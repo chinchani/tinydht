@@ -41,6 +41,7 @@ struct azureus_task {
     struct azureus_dht          *dht;
     struct azureus_db_key       *db_key;
     struct azureus_db_valset    *db_valset;
+    struct key                  closest_key[AZUREUS_K];
     TAILQ_ENTRY(azureus_task)   next;
     TAILQ_HEAD(db_node_list, azureus_node) db_node_list;
     int                         sock;
