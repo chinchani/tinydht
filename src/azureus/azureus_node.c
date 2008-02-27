@@ -95,6 +95,15 @@ azureus_node_delete(struct azureus_node *an)
     ad->stats.mem.node--;
 }
 
+struct azureus_node *
+azureus_node_copy(struct azureus_node *an)
+{
+    struct azureus_node *copy = NULL;
+
+    copy = azureus_node_new(an->dht, an->proto_ver, &an->ext_addr);
+    return copy;
+}
+
 int
 azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, u8 proto_ver)
 {

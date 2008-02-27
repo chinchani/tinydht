@@ -47,7 +47,7 @@ azureus_task_new(struct azureus_dht *ad, struct azureus_node *an,
     at->retries = MAX_RPC_RETRIES;
     at->dht = ad;
 
-    TAILQ_INIT(&at->db_node_list);
+    TAILQ_INIT(&at->node_list);
 
     return at;
 }
@@ -65,9 +65,17 @@ azureus_task_delete(struct azureus_task *at)
     ad = at->dht;
 
     task = &at->task;
-    pkt = task->pkt;
-    msg = azureus_rpc_msg_get_ref(pkt);
-    azureus_rpc_msg_delete(msg);
+
+    if (task->type == TASK_TYPE_CHILD) {
+        DEBUG("deleting child\n");
+        pkt = task->pkt;
+        msg = azureus_rpc_msg_get_ref(pkt);
+        azureus_rpc_msg_delete(msg);
+    } else if (task->type == TASK_TYPE_PARENT) {
+        DEBUG("deleting parent\n");
+        azureus_db_key_delete(at->db_key);
+        // azureus_db_valset_delete(at->db_valset);
+    }
 
     free(at);
 
