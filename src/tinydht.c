@@ -74,6 +74,8 @@ int poll_fd[MAX_POLL_FD];
 
 u64 n_rx_tx = 0;
 
+u64 tinydht_oid = 0;
+
 /*--------------- Private Functions -----------------*/
 
 int tinydht_init(void);
@@ -868,7 +870,7 @@ tinydht_usage(const char *cmd)
 
 /* Rate-limiting */
 void
-tinydht_rate_limit_update(size_t size)
+tinydht_net_usage_update(size_t size)
 {
     n_rx_tx += size;
 }
@@ -897,4 +899,11 @@ tinydht_rate_limit_allow(void)
     }
 
     return TRUE;
+}
+
+u64
+tinydht_alloc_oid(void)
+{
+    tinydht_oid++;
+    return tinydht_oid;
 }

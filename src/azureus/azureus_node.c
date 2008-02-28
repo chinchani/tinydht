@@ -87,6 +87,7 @@ void
 azureus_node_delete(struct azureus_node *an)
 {
     struct azureus_dht *ad = NULL;
+    struct azureus_task *at = NULL, *att = NULL;
 
     ASSERT(an);
 
@@ -205,12 +206,12 @@ void
 azureus_node_add_task(struct azureus_node *an, struct azureus_task *at)
 {
     TAILQ_INSERT_TAIL(&an->task_list, at, next_pending);
-    an->n_task++;
+    an->n_tasks++;
 }
 
 void
 azureus_node_delete_task(struct azureus_node *an, struct azureus_task *at)
 {
     TAILQ_REMOVE(&an->task_list, at, next_pending);
-    an->n_task--;
+    an->n_tasks--;
 }

@@ -307,6 +307,8 @@ azureus_dht_task_schedule(struct dht *dht)
                 DEBUG("retrying task\n");
                 at->retries--;
             }
+
+            ASSERT(at->retries >= 0);
         }
 
         if (!rate_limit_allow) {
@@ -948,7 +950,7 @@ azureus_dht_add_ping_task(struct azureus_dht *ad, struct azureus_node *an)
         return NULL;
     }
 
-    if ((ad->bootstrap != an) && an->n_task) {
+    if ((ad->bootstrap != an) && an->n_tasks) {
         return NULL;
     }
 
@@ -1007,7 +1009,7 @@ azureus_dht_add_find_node_task(struct azureus_dht *ad, struct azureus_node *an,
         return NULL;
     }
 
-    if ((ad->bootstrap != an) && an->n_task) {
+    if ((ad->bootstrap != an) && an->n_tasks) {
         return NULL;
     }
 
@@ -1175,6 +1177,7 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
     struct azureus_node *an = NULL;
     struct azureus_task *achild = NULL;
     struct azureus_rpc_msg *msg = NULL;
+    struct azureus_task *at = NULL, *att = NULL;
     int ret;
 
     DEBUG("entering ...\n");
@@ -1194,7 +1197,19 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
                                     TRUE);
 
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
+
         an = azureus_node_get_ref(tn);
+#if 0
+        /* is a find node task already scheduled on this node,
+         * piggyback/re-parent it */
+        TAILQ_FOREACH_SAFE(at, &an->task_list, next_pending, att) {
+            if ((at->type == AZUREUS_TASK_TYPE_FIND_NODE)
+                    1. is it on ad->this_node.id?
+                    2. does this task already have a parent?
+                    3. is this task already is TASK_WAIT state? */
+        }
+#endif
+
         if (!an->last_find_node) {
             /* we first need to send a 'find node' on this node, so that we can
              * get the random spoof id */
@@ -1366,6 +1381,9 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                 /* more work to do, and more waiting, so cannot delete the
                  * parent task yet! */
                 goto out;
+            } else {
+                /* FIXME: we should _not_ repeatedly send find nodes to the
+                 * same set of nodes */
             }
 
 #if 1
@@ -1473,7 +1491,7 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     ret = kbucket_insert_node(&ad->kbucket[index], &an->node, AZUREUS_K);
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
-    DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
+    DEBUG("azureus_dht_node_count %d\n", azureus_dht_get_node_count(ad));
 
     if (an->alive) {
         /* FIXME: if this node is closer to any of the key value pairs,
@@ -1493,6 +1511,15 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
 
     ASSERT(ad && an);
 
+    key_dump(&ad->this_node->node.id);
+    key_dump(&an->node.id);
+    DEBUG("index %d\n", index);
+
+    if (an->n_tasks) {
+        /* can't really delete this node if there are tasks pending */
+        return SUCCESS;
+    }
+
     index = kbucket_index(&ad->this_node->node.id, &an->node.id);
     ASSERT(index < 160);
 
@@ -1500,10 +1527,6 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
         return SUCCESS;
     }
-
-    key_dump(&ad->this_node->node.id);
-    key_dump(&an->node.id);
-    DEBUG("index %d\n", index);
 
     n = kbucket_delete_node(&ad->kbucket[index], &an->node);
     if (n && (an != azureus_node_get_ref(n))) {
@@ -1598,7 +1621,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
              */
             if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
                 if ((azureus_dht_get_node_count(ad) > 1) 
-                        || an->n_task) {
+                        || an->n_tasks) {
                     continue;
                 }
 
@@ -1609,7 +1632,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
             }
 
             /* task(s) already scheduled on this node? */
-            if (an->n_task) {
+            if (an->n_tasks) {
                 continue;
             }
 
@@ -2299,7 +2322,7 @@ azureus_dht_net_usage_update(struct azureus_dht *ad, size_t size,
 {
     ASSERT(ad);
 
-    tinydht_rate_limit_update(size);
+    tinydht_net_usage_update(size);
 
     switch (pkt_dir) {
 

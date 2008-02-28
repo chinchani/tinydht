@@ -77,7 +77,8 @@ struct tinydht_msg {
 
 int tinydht_add_poll_fd(int fd);
 int tinydht_add_task(struct task *task);
-void tinydht_rate_limit_update(size_t size);
+void tinydht_net_usage_update(size_t size);
 bool tinydht_rate_limit_allow(void);
 
+u64 tinydht_alloc_oid(void);
 #endif /* __TINYDHT_H__ */

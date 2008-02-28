@@ -71,6 +71,7 @@ struct azureus_dht_rpc_stats {
 
 struct azureus_dht {
     struct dht                  dht;
+    u64                         cr_time;
     u32                         trans_id;
     u8                          proto_ver;
     u32                         network;
@@ -79,7 +80,6 @@ struct azureus_dht {
     struct azureus_node         *this_node;
     struct azureus_node         *bootstrap;
     struct kbucket              kbucket[160];
-    u64                         cr_time;
     u32                         n_tasks;
     TAILQ_HEAD(azureus_task_list_head, azureus_task)    task_list;
     TAILQ_HEAD(azureus_db_list_head, azureus_db_item)   db_list;
