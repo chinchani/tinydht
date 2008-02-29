@@ -59,13 +59,33 @@ task_get_pkt_data_len(struct task *task)
     return len;
 }
 
+bool
+task_contains_child_task(struct task *parent, struct task *child)
+{
+    struct task *t = NULL;
+
+    ASSERT(parent && child);
+
+    TAILQ_FOREACH(t, &parent->child_list, next_child) {
+        if (t == child) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 int
 task_add_child_task(struct task *parent, struct task *child)
 {
     ASSERT(parent && child);
 
+    if (task_contains_child_task(parent, child)) {
+        ASSERT(0);
+    }
+
     /* FIXME: do we need to check if this task already exists */
-    TAILQ_INSERT_TAIL(&parent->child_list, child, child_next);
+    TAILQ_INSERT_TAIL(&parent->child_list, child, next_child);
     parent->n_child++;
 
     child->parent = parent;
@@ -85,7 +105,7 @@ task_remove_child_task(struct task *child)
     parent = child->parent;
     ASSERT(parent);
 
-    TAILQ_REMOVE(&parent->child_list, child, child_next);
+    TAILQ_REMOVE(&parent->child_list, child, next_child);
     parent->n_child--;
     child->parent = NULL;
 

@@ -25,6 +25,7 @@ struct azureus_rpc_msg;
 #include "azureus_dht.h"
 #include "azureus_node.h"
 #include "azureus_db.h"
+#include "tinydht.h"
 
 enum azureus_task_type {
     AZUREUS_TASK_TYPE_UNKNOWN = 0,
@@ -46,7 +47,7 @@ struct azureus_task {
     struct kbucket_node_search_list_head 
                                 node_list;
     int                         n_node;
-    int                         sock;
+    struct tinydht_msg          *tmsg;
 };
 
 static inline struct azureus_task *

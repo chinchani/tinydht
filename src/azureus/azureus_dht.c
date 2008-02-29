@@ -107,6 +107,7 @@ static int azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                                             bool status);
 static struct azureus_task * azureus_dht_add_parent_db_task(
                                     struct azureus_dht *ad, 
+                                    struct tinydht_msg *tmsg,
                                     enum azureus_task_type type, 
                                     struct azureus_db_key *db_key, 
                                     struct azureus_db_valset *db_valset);
@@ -338,10 +339,6 @@ azureus_dht_task_schedule(struct dht *dht)
                 DEBUG("TX\n");
                 // pkt_reset_data(&msg->pkt);
                 /* FIXME: encode everytime? */
-                ret = azureus_rpc_msg_encode(msg);  
-                if (ret != SUCCESS) {
-                    return FAILURE;
-                }
 
                 azureus_dht_rpc_tx(ad, at, msg);
 
@@ -678,10 +675,6 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     ad->est_dht_size = msg->m.find_node_rsp.est_dht_size + 1;
                 }
 
-                if (at->task.parent) {
-                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS);
-                }
-
                 break;
 
             case ACT_REPLY_FIND_VALUE:
@@ -702,17 +695,9 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     }
                 }
 
-                if (at->task.parent) {
-                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS);
-                }
-
                 break;
 
             case ACT_REPLY_STORE:
-                
-                if (at->task.parent) {
-                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS);
-                }
 
                 break;
 
@@ -741,6 +726,10 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             DEBUG("MY NETPOS (after)\n");
             azureus_vivaldi_pos_dump(&ad->this_node->viv_pos[VIVALDI_V1]);
             break;
+        }
+
+        if (at->task.parent) {
+            azureus_dht_notify_parent_db_task(ad, at, SUCCESS);
         }
 
         azureus_dht_delete_task(ad, at);      
@@ -812,19 +801,17 @@ azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 }
 
 int
-azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
+azureus_dht_get(struct dht *dht, struct tinydht_msg *tmsg)
 {
     struct azureus_dht *ad = NULL;
     struct azureus_db_key *db_key = NULL;
     struct azureus_task *at = NULL;
 
+    ASSERT(dht && tmsg);
+
     DEBUG("GET received\n");
 
-    if (!dht) {
-        return FAILURE;
-    }
-
-    if (msg->req.key_len > AZUREUS_MAX_KEY_LEN) {
+    if (tmsg->req.key_len > AZUREUS_MAX_KEY_LEN) {
         return FAILURE;
     }
 
@@ -836,7 +823,7 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     }
 
     /* FIXME: we are not interested in the 'real' key, but only its key-hash */
-    crypto_get_sha1_digest(msg->req.key, msg->req.key_len, db_key->data);
+    crypto_get_sha1_digest(tmsg->req.key, tmsg->req.key_len, db_key->data);
     db_key->len = MAX_KEY_SIZE;
 
 #if 0
@@ -853,10 +840,8 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *msg)
     msg->rsp.val_len = val->len;
 #endif
 
-    at = azureus_dht_add_parent_db_task(ad, AZUREUS_TASK_TYPE_FIND_VALUE, 
+    at = azureus_dht_add_parent_db_task(ad, tmsg, AZUREUS_TASK_TYPE_FIND_VALUE, 
                                     db_key, NULL);
-    at->sock = msg->sock;
-
     DEBUG("GET successful\n");
 
     return SUCCESS;
@@ -916,6 +901,7 @@ azureus_dht_ping_task_new(struct azureus_dht *ad, struct azureus_node *an)
 {
     struct azureus_rpc_msg *msg = NULL;
     struct azureus_task *at = NULL;
+    int ret;
 
     ASSERT(ad && an);
 
@@ -928,6 +914,12 @@ azureus_dht_ping_task_new(struct azureus_dht *ad, struct azureus_node *an)
     msg->action = ACT_REQUEST_PING;
     msg->pkt.dir = PKT_DIR_TX;
 
+    ret = azureus_rpc_msg_encode(msg);  
+    if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return NULL;
+    }
+
     at = azureus_task_new(ad, an, msg);
     if (!at) {
         azureus_rpc_msg_delete(msg);
@@ -935,6 +927,7 @@ azureus_dht_ping_task_new(struct azureus_dht *ad, struct azureus_node *an)
     }
 
     at->type = AZUREUS_TASK_TYPE_PING;
+
 
     return at;
 }
@@ -972,6 +965,7 @@ azureus_dht_find_node_task_new(struct azureus_dht *ad, struct azureus_node *an,
 {
     struct azureus_rpc_msg *msg = NULL;
     struct azureus_task *at = NULL;
+    int ret;
 
     ASSERT(ad && an && node_id);
 
@@ -986,6 +980,12 @@ azureus_dht_find_node_task_new(struct azureus_dht *ad, struct azureus_node *an,
 
     msg->m.find_node_req.id_len = node_id->len;
     memcpy(msg->m.find_node_req.id, node_id->data, node_id->len);
+
+    ret = azureus_rpc_msg_encode(msg);  
+    if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return NULL;
+    }
 
     at = azureus_task_new(ad, an, msg);
     if (!at) {
@@ -1056,6 +1056,12 @@ azureus_dht_find_value_task_new(struct azureus_dht *ad,
     msg->m.find_value_req.flags = FLAG_SINGLE_VALUE;
     msg->m.find_value_req.max_vals = AZUREUS_MAX_VALS_PER_KEY;
     memcpy(&msg->m.find_value_req.key, db_key, sizeof(struct azureus_db_key));
+
+    ret = azureus_rpc_msg_encode(msg);  
+    if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return NULL;
+    }
 
     at = azureus_task_new(ad, an, msg);
     if (!at) {
@@ -1131,6 +1137,12 @@ azureus_dht_store_value_task_new(struct azureus_dht *ad,
     TAILQ_INIT(&msg->m.store_value_req.valset_list);
     TAILQ_INSERT_TAIL(&msg->m.store_value_req.valset_list, db_valset, next);
 
+    ret = azureus_rpc_msg_encode(msg);  
+    if (ret != SUCCESS) {
+        azureus_rpc_msg_delete(msg);
+        return NULL;
+    }
+
     at = azureus_task_new(ad, an, msg);
     if (!at) {
         azureus_rpc_msg_delete(msg);
@@ -1199,16 +1211,28 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
     TAILQ_FOREACH_SAFE(tn, list, next, tnn) {
 
         an = azureus_node_get_ref(tn);
-#if 0
-        /* is a find node task already scheduled on this node,
-         * piggyback/re-parent it */
+
         TAILQ_FOREACH_SAFE(at, &an->task_list, next_pending, att) {
-            if ((at->type == AZUREUS_TASK_TYPE_FIND_NODE)
-                    1. is it on ad->this_node.id?
-                    2. does this task already have a parent?
-                    3. is this task already is TASK_WAIT state? */
+
+            achild = at;
+
+            if ((achild->type == AZUREUS_TASK_TYPE_FIND_NODE) 
+                    && !achild->task.parent) { 
+
+                msg = azureus_rpc_msg_get_ref(achild->task.pkt);
+                ASSERT(memcmp(msg->m.find_node_req.id, &ad->this_node->node.id.data, msg->m.find_node_req.id_len) == 0);
+
+                DEBUG("reparent %p -> %p\n", aparent, achild);
+
+                task_add_child_task(&aparent->task, &achild->task);
+
+                if (achild->task.state != TASK_STATE_WAIT) {
+                    azureus_dht_rpc_tx(ad, achild, msg);
+                }
+
+                ASSERT(an->last_find_node);
+            }
         }
-#endif
 
         if (!an->last_find_node) {
             /* we first need to send a 'find node' on this node, so that we can
@@ -1221,12 +1245,7 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
 
             task_add_child_task(&aparent->task, &achild->task);
             azureus_dht_add_task(ad, achild);
-            /* FIXME: we need to schedule these tasks right away! */
             msg = azureus_rpc_msg_get_ref(achild->task.pkt);
-            ret = azureus_rpc_msg_encode(msg);  
-            if (ret != SUCCESS) {
-                return FAILURE;
-            }
             azureus_dht_rpc_tx(ad, achild, msg);
 
             *need_find_node = TRUE;
@@ -1240,13 +1259,14 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
 
 static struct azureus_task *
 azureus_dht_add_parent_db_task(struct azureus_dht *ad, 
+                                struct tinydht_msg *tmsg,
                                 enum azureus_task_type type, 
                                 struct azureus_db_key *db_key, 
                                 struct azureus_db_valset *db_valset)
 {
     struct azureus_node *an = NULL;
     struct azureus_task *aparent = NULL, *achild = NULL;
-    struct key key;
+    struct key lookup_id;
     struct kbucket_node_search_list_head list;
     int n_list = 0;
     struct node *tn = NULL, *tnn = NULL;
@@ -1257,7 +1277,7 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
 
     DEBUG("entering ...\n");
 
-    ASSERT(ad && type && db_key);
+    ASSERT(ad && tmsg && type && db_key);
 
     aparent = azureus_task_new(ad, ad->this_node, NULL);
     if (!aparent) {
@@ -1266,12 +1286,13 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
 
     aparent->type = type;
     aparent->db_key = db_key;
+    aparent->tmsg = tmsg;
 
-    bzero(&key, sizeof(key));
-    key_new(&key, KEY_TYPE_SHA1, db_key->data, db_key->len);
+    bzero(&lookup_id, sizeof(struct key));
+    key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
     /* do we need to do find node first? */
-    azureus_dht_add_find_node_db_task(ad, aparent, &key, &list, &n_list, 
+    azureus_dht_add_find_node_db_task(ad, aparent, &lookup_id, &list, &n_list, 
                                         &need_find_node);
 
     DEBUG("need_find_node %d\n", need_find_node);
@@ -1298,10 +1319,6 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
             azureus_dht_add_task(ad, fvt);
             /* FIXME: we need to schedule these tasks right away! */
             msg = azureus_rpc_msg_get_ref(fvt->task.pkt);
-            ret = azureus_rpc_msg_encode(msg);  
-            if (ret != SUCCESS) {
-                return NULL;
-            }
             azureus_dht_rpc_tx(ad, fvt, msg);
 
         } else if (type == AZUREUS_TASK_TYPE_STORE_VALUE) {
@@ -1315,10 +1332,6 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
             azureus_dht_add_task(ad, svt);
             /* FIXME: we need to schedule these tasks right away! */
             msg = azureus_rpc_msg_get_ref(fvt->task.pkt);
-            ret = azureus_rpc_msg_encode(msg);  
-            if (ret != SUCCESS) {
-                return NULL;
-            }
             azureus_dht_rpc_tx(ad, svt, msg);
         }
     }
@@ -1333,7 +1346,6 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
 {
     struct azureus_task *aparent = NULL;
     struct azureus_rpc_msg *msg = NULL;
-    struct tinydht_msg tmsg;
     struct key lookup_id;
     struct azureus_db_key *db_key = NULL;
     struct kbucket_node_search_list_head list;
@@ -1342,6 +1354,7 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     struct azureus_task *fvt = NULL, *svt = NULL;
     struct azureus_node *an = NULL;
     struct node *tn = NULL, *tnn = NULL;
+    struct tinydht_msg *tmsg = NULL;
     int ret;
 
     DEBUG("entering ...\n");
@@ -1380,7 +1393,7 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
             if (need_find_node) {
                 /* more work to do, and more waiting, so cannot delete the
                  * parent task yet! */
-                goto out;
+                return SUCCESS;
             } else {
                 /* FIXME: we should _not_ repeatedly send find nodes to the
                  * same set of nodes */
@@ -1404,10 +1417,6 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                     azureus_dht_add_task(ad, fvt);
                     /* FIXME: we need to schedule these tasks right away! */
                     msg = azureus_rpc_msg_get_ref(achild->task.pkt);
-                    ret = azureus_rpc_msg_encode(msg);  
-                    if (ret != SUCCESS) {
-                        return FAILURE;
-                    }
                     azureus_dht_rpc_tx(ad, fvt, msg);
 
                 } else if (aparent->type == AZUREUS_TASK_TYPE_STORE_VALUE) {
@@ -1421,16 +1430,12 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                     azureus_dht_add_task(ad, svt);
                     /* FIXME: we need to schedule these tasks right away! */
                     msg = azureus_rpc_msg_get_ref(achild->task.pkt);
-                    ret = azureus_rpc_msg_encode(msg);  
-                    if (ret != SUCCESS) {
-                        return FAILURE;
-                    }
                     azureus_dht_rpc_tx(ad, fvt, msg);
                 }
             }
 #endif
 
-            break;
+            return SUCCESS;
 
         case AZUREUS_TASK_TYPE_FIND_VALUE:
             /* we may either get a list of nodes, or the value itself 
@@ -1441,8 +1446,6 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
              *   value to the caller.
              */
             DEBUG("find value\n");
-            bzero(&tmsg, sizeof(struct tinydht_msg));
-            tmsg.rsp.status = TINYDHT_RESPONSE_SUCCESS;
             
             break;
 
@@ -1453,10 +1456,21 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
             break;
     }
 
+    /* finally, respond to the pending service request */
+    tmsg = aparent->tmsg;
+    tmsg->rsp.status = TINYDHT_RESPONSE_FAILURE;
+    ret = send(tmsg->sock, &tmsg->rsp, sizeof(tmsg->rsp), 0);
+    if (ret < 0) {
+        ERROR("send() - %s\n", strerror(errno));
+    }
+
+    close(tmsg->sock);
+    free(tmsg);
+    aparent->tmsg = NULL;
+
     DEBUG("deleting parent task\n");
     azureus_task_delete(aparent);
 
-out:
     return SUCCESS;
 }
 
@@ -1536,7 +1550,7 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
     azureus_node_delete(an);
 
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
-    DEBUG("azureues_dht_node_count %d\n", azureus_dht_get_node_count(ad));
+    DEBUG("azureus_dht_node_count %d\n", azureus_dht_get_node_count(ad));
 
     return SUCCESS;
 }

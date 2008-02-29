@@ -48,7 +48,7 @@ struct task {
     struct task                         *parent;
     TAILQ_HEAD(child_task_list, task)   child_list;
     u32                                 n_child;
-    TAILQ_ENTRY(task)                   child_next;
+    TAILQ_ENTRY(task)                   next_child;
 };
 
 int task_new(struct task *task, struct dht *dht, 
