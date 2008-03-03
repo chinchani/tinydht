@@ -71,10 +71,12 @@ azureus_task_delete(struct azureus_task *at)
         pkt = task->pkt;
         msg = azureus_rpc_msg_get_ref(pkt);
         azureus_rpc_msg_delete(msg);
+        ASSERT(!task->parent);
     } else if (task->type == TASK_TYPE_PARENT) {
         DEBUG("deleting parent\n");
         azureus_db_key_delete(at->db_key);
         // azureus_db_valset_delete(at->db_valset);
+        ASSERT(!task->n_child);
     }
 
     free(at);

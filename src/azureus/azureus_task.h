@@ -43,7 +43,7 @@ struct azureus_task {
     struct azureus_db_key       *db_key;
     struct azureus_db_valset    *db_valset;
     TAILQ_ENTRY(azureus_task)   next;
-    TAILQ_ENTRY(azureus_task)   next_pending;
+    TAILQ_ENTRY(azureus_task)   next_node_task;
     struct kbucket_node_search_list_head 
                                 node_list;
     int                         n_node;

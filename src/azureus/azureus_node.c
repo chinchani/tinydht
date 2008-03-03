@@ -87,9 +87,9 @@ void
 azureus_node_delete(struct azureus_node *an)
 {
     struct azureus_dht *ad = NULL;
-    struct azureus_task *at = NULL, *att = NULL;
 
     ASSERT(an);
+    ASSERT(!an->n_tasks);
 
     ad = an->dht;
     free(an);
@@ -205,13 +205,13 @@ azureus_node_get_spoof_id(struct azureus_node *an, u32 *id)
 void
 azureus_node_add_task(struct azureus_node *an, struct azureus_task *at)
 {
-    TAILQ_INSERT_TAIL(&an->task_list, at, next_pending);
+    TAILQ_INSERT_TAIL(&an->task_list, at, next_node_task);
     an->n_tasks++;
 }
 
 void
 azureus_node_delete_task(struct azureus_node *an, struct azureus_task *at)
 {
-    TAILQ_REMOVE(&an->task_list, at, next_pending);
+    TAILQ_REMOVE(&an->task_list, at, next_node_task);
     an->n_tasks--;
 }

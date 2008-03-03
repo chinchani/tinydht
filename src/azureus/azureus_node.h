@@ -46,7 +46,7 @@ struct azureus_node {
     u32                                 my_rnd_id;
     struct azureus_vivaldi_pos          viv_pos[MAX_RPC_VIVALDI_POS];
     int                                 n_tasks;
-    TAILQ_HEAD(pending_task_list, azureus_task)
+    TAILQ_HEAD(node_task_list, azureus_task)
                                         task_list;
     bool                                alive;
     u64                                 last_ping;

@@ -57,6 +57,6 @@ int task_new(struct task *task, struct dht *dht,
 size_t task_get_pkt_data_len(struct task *task);
 
 int task_add_child_task(struct task *parent, struct task *child);
-int task_remove_child_task(struct task *child);
+int task_delete_child_task(struct task *child);
 
 #endif /* __TASK_H__ */

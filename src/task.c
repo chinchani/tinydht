@@ -80,12 +80,17 @@ task_add_child_task(struct task *parent, struct task *child)
 {
     ASSERT(parent && child);
 
+    DEBUG("%p %p\n", parent, child);
+
     if (task_contains_child_task(parent, child)) {
         ASSERT(0);
     }
 
     /* FIXME: do we need to check if this task already exists */
     TAILQ_INSERT_TAIL(&parent->child_list, child, next_child);
+    if (!task_contains_child_task(parent, child)) {
+        ASSERT(0);
+    }
     parent->n_child++;
 
     child->parent = parent;
@@ -95,19 +100,28 @@ task_add_child_task(struct task *parent, struct task *child)
 }
 
 int
-task_remove_child_task(struct task *child)
+task_delete_child_task(struct task *child)
 {
     struct task *parent = NULL;
-    struct task *tn = NULL, *tnn = NULL;
 
     ASSERT(child);
 
     parent = child->parent;
     ASSERT(parent);
 
+    if (!task_contains_child_task(parent, child)) {
+        ASSERT(0);
+    }
+
     TAILQ_REMOVE(&parent->child_list, child, next_child);
+    if (task_contains_child_task(parent, child)) {
+        ASSERT(0);
+    }
     parent->n_child--;
     child->parent = NULL;
+
+    DEBUG("parent %p child %p child->parent %p parent->n_child %d\n", 
+            parent, child, child->parent, parent->n_child);
 
     return SUCCESS;
 }
