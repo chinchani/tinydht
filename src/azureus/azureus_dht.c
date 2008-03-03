@@ -1187,6 +1187,7 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
 static int
 azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
                                     struct azureus_task *aparent,
+                                    struct azureus_task *achild,
                                     struct key *key,
                                     struct kbucket_node_search_list_head *list,
                                     int *n_list,
@@ -1194,9 +1195,9 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
 {
     struct node *tn = NULL, *tnn = NULL;
     struct azureus_node *an = NULL;
-    struct azureus_task *achild = NULL;
     struct azureus_rpc_msg *msg = NULL;
     struct azureus_task *at = NULL, *att = NULL;
+    struct azureus_task *fnt = NULL;
     int ret;
 
     DEBUG("entering ...\n");
@@ -1221,39 +1222,44 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
 
         TAILQ_FOREACH_SAFE(at, &an->task_list, next_node_task, att) {
 
-            achild = at;
+            if ((at->type == AZUREUS_TASK_TYPE_FIND_NODE) 
+                    && !at->task.parent) { 
 
-            if ((achild->type == AZUREUS_TASK_TYPE_FIND_NODE) 
-                    && !achild->task.parent) { 
-
-                msg = azureus_rpc_msg_get_ref(achild->task.pkt);
+                msg = azureus_rpc_msg_get_ref(at->task.pkt);
                 ASSERT(memcmp(msg->m.find_node_req.id, 
                                 &ad->this_node->node.id.data, 
                                 msg->m.find_node_req.id_len) == 0);
 
-                if (achild->task.state != TASK_STATE_WAIT) {
-                    DEBUG("reparent %p -> %p\n", aparent, achild);
-                    task_add_child_task(&aparent->task, &achild->task);
-                    azureus_dht_rpc_tx(ad, achild, msg);
-                    *need_find_node = TRUE;
-                    ASSERT(an->last_find_node);
+                if (achild && (at == achild)) {
+                    ASSERT(achild->task.state == TASK_STATE_WAIT);
+                    continue;
                 }
+
+                DEBUG("reparent %p %p -> %p\n", aparent, achild, at);
+                task_add_child_task(&aparent->task, &at->task);
+
+                if (at->task.state != TASK_STATE_WAIT) {
+                    azureus_dht_rpc_tx(ad, at, msg);
+                }
+
+                ASSERT(an->last_find_node);
+                *need_find_node = TRUE;
             }
         }
 
         if (!an->last_find_node) {
             /* we first need to send a 'find node' on this node, so that we can
              * get the random spoof id */
-            achild = azureus_dht_find_node_task_new(ad, an, 
+            fnt = azureus_dht_find_node_task_new(ad, an, 
                                                     &ad->this_node->node.id);
-            if (!achild) {
+            if (!fnt) {
                 ASSERT(0);      /* FIXME: need a better way to handle this! */
             }
 
-            task_add_child_task(&aparent->task, &achild->task);
-            azureus_dht_add_task(ad, achild);
-            msg = azureus_rpc_msg_get_ref(achild->task.pkt);
-            azureus_dht_rpc_tx(ad, achild, msg);
+            task_add_child_task(&aparent->task, &fnt->task);
+            azureus_dht_add_task(ad, fnt);
+            msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
+            azureus_dht_rpc_tx(ad, fnt, msg);
             *need_find_node = TRUE;
         } 
     }
@@ -1298,7 +1304,8 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
     /* do we need to do find node first? */
-    azureus_dht_add_find_node_db_task(ad, aparent, &lookup_id, &list, &n_list, 
+    azureus_dht_add_find_node_db_task(ad, aparent, NULL, &lookup_id, 
+                                        &list, &n_list, 
                                         &need_find_node);
 
     DEBUG("need_find_node %d\n", need_find_node);
@@ -1396,7 +1403,7 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
             bzero(&lookup_id, sizeof(struct key));
             key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
-            azureus_dht_add_find_node_db_task(ad, aparent, &lookup_id, 
+            azureus_dht_add_find_node_db_task(ad, aparent, achild, &lookup_id, 
                                             &list, &n_list, &need_find_node);
 
             if (need_find_node) {
