@@ -484,7 +484,7 @@ azureus_rpc_match_req_rsp(struct azureus_rpc_msg *req,
     ASSERT(req && rsp);
     ASSERT(req->is_req && !rsp->is_req);
 
-//    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
+    DEBUG("%#llx %#llx\n", req->p.pr_udp_req.conn_id, rsp->u.udp_rsp.conn_id);
 
     if (req->p.pr_udp_req.conn_id == rsp->u.udp_rsp.conn_id) {
         return TRUE;
@@ -627,6 +627,7 @@ static int
 azureus_rpc_udp_req_encode(struct azureus_rpc_msg *msg)
 {
     u64 timestamp = 0;
+    u32 skew = 0;
     int ret;
     struct azureus_dht *ad = NULL;
 
@@ -687,6 +688,15 @@ azureus_rpc_udp_req_encode(struct azureus_rpc_msg *msg)
         return ret;
     }
     msg->u.udp_req.orig_time = timestamp;
+
+#if 0
+    skew = 0;
+    ret = pkt_write_int(&msg->pkt, skew);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+    msg->u.udp_req.skew = skew;
+#endif
 
     return SUCCESS;
 }
@@ -1434,6 +1444,8 @@ azureus_rpc_find_value_rsp_decode(struct azureus_rpc_msg *msg)
         return ret;
     }
 
+    DEBUG("has_vals %d\n", msg->m.find_value_rsp.has_vals);
+
     if (!msg->m.find_value_rsp.has_vals) {
         /* there are no values, but a list of nodes */
         TAILQ_INIT(&msg->m.find_value_rsp.node_list);
@@ -1507,11 +1519,14 @@ azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
     ad = azureus_dht_get_ref(msg->pkt.dht);
 
     if (ad->proto_ver >= PROTOCOL_VERSION_ANTI_SPOOF) {
-        ret = pkt_write_int(&msg->pkt, ad->this_node->rnd_id);
+        DEBUG("rnd_id %#x\n", msg->m.store_value_req.rnd_id);
+        ret = pkt_write_int(&msg->pkt, msg->m.store_value_req.rnd_id);
         if (ret != SUCCESS) {
             return ret;
         }
     }
+
+    DEBUG("n_keys %d\n", msg->m.store_value_req.n_keys);
 
     ret = pkt_write_byte(&msg->pkt, msg->m.store_value_req.n_keys);
     if (ret != SUCCESS) {
@@ -1524,6 +1539,8 @@ azureus_rpc_store_value_req_encode(struct azureus_rpc_msg *msg)
             return ret;
         }
     }
+
+    DEBUG("n_valsets %d\n", msg->m.store_value_req.n_valsets);
 
     ret = pkt_write_byte(&msg->pkt, msg->m.store_value_req.n_valsets);
     if (ret != SUCCESS) {

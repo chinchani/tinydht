@@ -133,27 +133,27 @@ azureus_db_valset_add_val(struct azureus_db_valset *vs, u8 *val, int val_len)
 }
 
 struct azureus_db_item *
-azureus_db_item_new(struct azureus_dht *ad, struct azureus_db_key *key, 
-                    struct azureus_db_valset *valset)
+azureus_db_item_new(struct azureus_dht *ad, struct azureus_db_key *db_key, 
+                    struct azureus_db_valset *db_valset)
 {
-    struct azureus_db_item *item = NULL;
+    struct azureus_db_item *db_item = NULL;
 
-    ASSERT(ad && key && valset);
+    ASSERT(ad && db_key && db_valset);
 
-    item = (struct azureus_db_item *) malloc(sizeof(struct azureus_db_item));
-    if (!item) {
+    db_item = (struct azureus_db_item *) malloc(sizeof(struct azureus_db_item));
+    if (!db_item) {
         return NULL;
     }
 
-    bzero(item, sizeof(struct azureus_db_item));
-    item->dht = ad;
-    item->key = key;
-    item->valset = valset;
-    item->cr_time = dht_get_current_time();
+    bzero(db_item, sizeof(struct azureus_db_item));
+    db_item->dht = ad;
+    db_item->key = db_key;
+    db_item->valset = db_valset;
+    db_item->cr_time = dht_get_current_time();
 
-    TAILQ_INIT(&item->node_list);
+    TAILQ_INIT(&db_item->node_list);
 
-    return item;
+    return db_item;
 }
 
 void

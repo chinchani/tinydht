@@ -106,13 +106,13 @@ struct azureus_pr_udp_req {
     u64                         conn_id;    
     u32                         action;     /* action           */
     u32                         trans_id;   /* transaction id   */
-};
+};      /* 16 bytes */
 
 /* PR UDP Response */
 struct azureus_pr_udp_rsp {
     u32                         action;     /* action           */
     u32                         trans_id;   /* transaction id   */
-};
+};      /* 8 bytes */
 
 /* Base Azureus Request */
 struct azureus_udp_req {
@@ -123,8 +123,8 @@ struct azureus_udp_req {
     struct sockaddr_storage     ss;
     u32                         orig_inst_id;   /* originator's instance_id */
     u64                         orig_time;
-    u64                         skew;
-};
+    u32                         skew;
+};      /* PR_UDP_REQ + 26 bytes = 42 bytes */
 
 /* Base Azureus Response */
 struct azureus_udp_rsp {
@@ -133,7 +133,7 @@ struct azureus_udp_rsp {
     u8                          vendor_id;      /* vendor id    */
     u32                         network;        /* network      */
     u32                         tgt_inst_id;
-};
+};      /* PR_UDP_RSP + 18 bytes = 26 bytes */
 
 /* ping request/response */
 struct azureus_rpc_ping_req {

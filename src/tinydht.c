@@ -742,7 +742,6 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
     struct tinydht_msg_req req;
     struct tinydht_msg *msg = NULL;
     int ret;
-    bool action = FAILURE;
 
     bzero(&req, sizeof(req));
     memcpy(&req, data, len);
@@ -769,7 +768,6 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
                 break;
             }
 
-            action = SUCCESS;
             break;
 
         case TINYDHT_ACTION_GET:
@@ -779,7 +777,6 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
                 break;
             }
 
-            action = SUCCESS;
             break;
 
         default:
@@ -788,8 +785,19 @@ tinydht_decode_request(int sock, struct sockaddr_storage *from,
             goto err;
     }
 
-    if (action != SUCCESS) {
+    if (ret != SUCCESS) {
         msg->rsp.status = TINYDHT_RESPONSE_FAILURE;
+
+        ret = send(sock, &msg->rsp, sizeof(msg->rsp), 0);
+        if (ret < 0) {
+            ERROR("send() - %s\n", strerror(errno));
+        }
+
+        close(sock);
+        free(msg);
+
+    } else if (req.action == TINYDHT_ACTION_PUT) {
+        msg->rsp.status = TINYDHT_RESPONSE_SUCCESS;
 
         ret = send(sock, &msg->rsp, sizeof(msg->rsp), 0);
         if (ret < 0) {

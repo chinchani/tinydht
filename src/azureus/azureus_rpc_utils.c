@@ -287,11 +287,12 @@ azureus_pkt_write_db_val(struct pkt *pkt, struct azureus_db_val *val,
     ASSERT(pkt && val);
 
     if (proto_ver >= PROTOCOL_VERSION_REMOVE_DIST_ADD_VER) {
+        DEBUG("ver %#x\n", val->ver);
+        val->ver = 0x1;
         ret = pkt_write_int(pkt, val->ver);
         if (ret != SUCCESS) {
             return ret;
         }
-        DEBUG("ver %#x\n", val->ver);
     } else {
         ret = pkt_write_int(pkt, 0);
         if (ret != SUCCESS) {

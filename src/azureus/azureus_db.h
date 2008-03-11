@@ -40,8 +40,8 @@ struct azureus_db_key {
 struct azureus_db_val {
     u32                         ver;
     u64                         timestamp;
-    u8                          data[AZUREUS_MAX_VAL_LEN];
     u16                         len;
+    u8                          data[AZUREUS_MAX_VAL_LEN];
     struct azureus_node         orig_node;
     u8                          flags;
     TAILQ_ENTRY(azureus_db_val) next;
