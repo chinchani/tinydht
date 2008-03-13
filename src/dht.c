@@ -21,6 +21,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "dht.h"
 #include "dht_types.h"
@@ -112,11 +113,11 @@ dht_new(struct dht *dht, unsigned int type,
 
     for (i = 0; (i < MAX_DHT_TYPE) && dht_table[i]; i++) {
         if (dht_table[i]->type == type) {
-            dht->get = dht_table[i]->get;
-            dht->put = dht_table[i]->put;
-            dht->rpc_rx = dht_table[i]->rpc_rx;
-            dht->task_schedule = dht_table[i]->task_schedule;
-            dht->exit = dht_table[i]->exit;
+            dht->get            = dht_table[i]->get;
+            dht->put            = dht_table[i]->put;
+            dht->rpc_rx         = dht_table[i]->rpc_rx;
+            dht->task_schedule  = dht_table[i]->task_schedule;
+            dht->exit           = dht_table[i]->exit;
             break;
         }
     }

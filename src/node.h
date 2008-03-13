@@ -23,8 +23,16 @@
 #include "key.h"
 #include "types.h"
 
+enum node_state {
+    NODE_STATE_UNKNOWN = 0,
+    NODE_STATE_GOOD,
+    NODE_STATE_QUESTIONABLE,
+    NODE_STATE_BAD
+};
+
 struct node {
     struct key                  id;
+    enum node_state             state;
     LIST_ENTRY(node)            kb_next;
     TAILQ_ENTRY(node)           next;
 };

@@ -285,13 +285,16 @@ azureus_dht_task_schedule(struct dht *dht)
 
         if (at->task.state == TASK_STATE_WAIT) {
             /* was there a timeout? */
+            if (curr_time < at->task.access_time) {
+                continue;       /* FIXME: BUG!!! */
+            }
             if ((curr_time - at->task.access_time) < AZUREUS_RPC_TIMEOUT) {
                 /* this task hasn't timed out yet, so wait some more! */
                 continue;
             }
 
             if (at->retries == 0) {
-                DEBUG("task %p timed out\n", at);
+                DEBUG("task %p timed out %lld %lld\n", at, curr_time, at->task.access_time, AZUREUS_RPC_TIMEOUT);
                 an = azureus_node_get_ref(at->task.node);
                 ASSERT(an);
                 if (at->task.parent) {
@@ -365,6 +368,8 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct azureus_task *at,
 
     ASSERT(ad && msg);  /* param "at" can be null! */
 
+    curr_time = dht_get_current_time();
+
     ret = sendto(ad->dht.net_if.sock, msg->pkt.data, msg->pkt.len, 0, 
             (struct sockaddr *)&msg->pkt.ss, sizeof(struct sockaddr_in));
     if (ret < 0) {
@@ -375,8 +380,6 @@ azureus_dht_rpc_tx(struct azureus_dht *ad, struct azureus_task *at,
             ntohs(((struct sockaddr_in *)&msg->pkt.ss)->sin_port));
         return FAILURE;
     }
-
-    curr_time = dht_get_current_time();
 
     DEBUG("sent %d bytes to %s/%hu\n", 
             ret,
@@ -883,6 +886,7 @@ static int
 azureus_dht_add_task(struct azureus_dht *ad, struct azureus_task *at)
 {
     struct azureus_node *an = NULL;
+    struct azureus_rpc_msg *msg = NULL;
 
     ASSERT(ad && at);
 
@@ -893,6 +897,9 @@ azureus_dht_add_task(struct azureus_dht *ad, struct azureus_task *at)
     TAILQ_INSERT_TAIL(&ad->task_list, at, next);
     ad->n_tasks++;
 
+    msg = azureus_rpc_msg_get_ref(at->task.pkt);
+    DEBUG("%#llx\n", msg->p.pr_udp_req.conn_id);
+
     return SUCCESS;
 }
 
@@ -900,12 +907,16 @@ static int
 azureus_dht_delete_task(struct azureus_dht *ad, struct azureus_task *at)
 {
     struct azureus_node *an = NULL;
+    struct azureus_rpc_msg *msg = NULL;
 
     ASSERT(ad && at);
 
     ASSERT(!at->task.parent);
 
     an = azureus_node_get_ref(at->task.node);
+
+    msg = azureus_rpc_msg_get_ref(at->task.pkt);
+    DEBUG("%#llx\n", msg->p.pr_udp_req.conn_id);
 
     TAILQ_REMOVE(&ad->task_list, at, next);
     ad->n_tasks--;
@@ -1156,7 +1167,7 @@ azureus_dht_store_value_task_new(struct azureus_dht *ad,
 
     msg->m.store_value_req.rnd_id = an->my_rnd_id;
     DEBUG("rnd_id %#x\n", msg->m.store_value_req.rnd_id);
-    ASSERT(an->my_rnd_id || an->failures);
+    // ASSERT(!an->failures);
 
     TAILQ_INIT(&msg->m.store_value_req.key_list);
     TAILQ_INSERT_TAIL(&msg->m.store_value_req.key_list, db_key, next);
@@ -1249,7 +1260,7 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
             if (at->type == AZUREUS_TASK_TYPE_FIND_NODE) {
 
                 if (!at->task.parent) {
-
+                    /* there is no parent for this task, so piggyback it */
                     msg = azureus_rpc_msg_get_ref(at->task.pkt);
                     ASSERT(memcmp(msg->m.find_node_req.id, 
                                 &ad->this_node->node.id.data, 
@@ -1271,6 +1282,8 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
                     *need_find_node = TRUE;
 
                 } else {
+                    /* there is already a parent for this task,
+                     * so just create a new one */
                     DEBUG("already has a parent\n");
                     fnt = azureus_dht_find_node_task_new(ad, an, 
                             &ad->this_node->node.id);
@@ -1434,7 +1447,8 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
 
     if (aparent->task.n_child != 0) {
         /* we have more waiting to do! */
-        DEBUG("aparent %p n_child %d\n", aparent, aparent->task.n_child);
+        DEBUG("aparent %p n_child %d type %d status %d\n", 
+                aparent, aparent->task.n_child, achild->type, status);
         return SUCCESS;
     }
 
