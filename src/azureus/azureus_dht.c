@@ -286,7 +286,7 @@ azureus_dht_task_schedule(struct dht *dht)
         if (at->task.state == TASK_STATE_WAIT) {
             /* was there a timeout? */
             if (curr_time < at->task.access_time) {
-                continue;       /* FIXME: BUG!!! */
+                continue;       /* FIXME: BUG!!! use adjtime() ?? */
             }
             if ((curr_time - at->task.access_time) < AZUREUS_RPC_TIMEOUT) {
                 /* this task hasn't timed out yet, so wait some more! */
