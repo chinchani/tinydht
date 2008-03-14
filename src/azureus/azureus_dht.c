@@ -87,7 +87,7 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 int *n_list, 
                                 u8 min_proto_ver, 
                                 bool use_ext, 
-                                bool use_not_alive);
+                                bool use_questionable);
 
 static int azureus_dht_get_node_count(struct azureus_dht *ad);
 
@@ -262,7 +262,6 @@ azureus_dht_task_schedule(struct dht *dht)
     struct azureus_node *an = NULL;
     u64 curr_time = 0;
     bool rate_limit_allow = TRUE;
-    int ret;
 
     ASSERT(dht);
 
@@ -294,7 +293,8 @@ azureus_dht_task_schedule(struct dht *dht)
             }
 
             if (at->retries == 0) {
-                DEBUG("task %p timed out %lld %lld\n", at, curr_time, at->task.access_time, AZUREUS_RPC_TIMEOUT);
+                DEBUG("task %p timed out %lld %lld\n", 
+                        at, curr_time, at->task.access_time);
                 an = azureus_node_get_ref(at->task.node);
                 ASSERT(an);
                 if (at->task.parent) {
@@ -304,9 +304,11 @@ azureus_dht_task_schedule(struct dht *dht)
                 DEBUG("deleting_here1\n");
                 azureus_dht_delete_task(ad, at);      
                 an->alive = FALSE;
+                an->node.state = NODE_STATE_QUESTIONABLE;
                 an->failures++;
                 an->last_ping = 0;
                 if (an->failures == MAX_RPC_FAILURES) {
+                    an->node.state = NODE_STATE_BAD;
                     azureus_dht_delete_node(ad, an);
                 }
                 continue;
@@ -474,7 +476,8 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
         } else {
             /* node exists */
-            if (an->alive) {
+//            if (an->alive) {
+            if (an->node.state == NODE_STATE_GOOD) {            
                 an->last_ping = timestamp;
             }
         }
@@ -646,6 +649,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
         an = azureus_node_get_ref(at->task.node);
         ASSERT(an);
         an->alive = TRUE;
+        an->node.state = NODE_STATE_GOOD;
         an->failures = 0;
         azureus_dht_update_node(ad, an);
 
@@ -751,13 +755,11 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 int
 azureus_dht_put(struct dht *dht, struct tinydht_msg *msg)
 {
-    struct azureus_db_item *item = NULL, *itemn = NULL;
     struct azureus_dht *ad = NULL;
     struct azureus_db_key *db_key = NULL;
     struct azureus_db_valset *db_valset = NULL;
     struct azureus_db_val *db_val = NULL;
     int ret;
-    size_t off, len;
     u64 curr_time = 0;
 
     DEBUG("PUT received\n");
@@ -1112,11 +1114,11 @@ azureus_dht_add_find_value_task(struct azureus_dht *ad,
                                 struct azureus_db_key *db_key)
 {
     struct azureus_task *at = NULL;
-    int ret;
 
     ASSERT(ad && an && db_key);
 
-    if (!an->alive) {
+    if (an->node.state != NODE_STATE_GOOD) {
+//    if (!an->alive) {
         return NULL;
     }
 
@@ -1201,7 +1203,6 @@ azureus_dht_add_store_value_task(struct azureus_dht *ad,
                                     struct azureus_db_valset *db_valset)
 {
     struct azureus_task *at = NULL;
-    int ret;
 
     ASSERT(ad && an && db_key && db_valset);
 
@@ -1232,7 +1233,6 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
     struct azureus_task *at = NULL, *att = NULL;
     struct azureus_task *fnt = NULL;
     u64 curr_time = 0;
-    int ret;
 
     DEBUG("entering ...\n");
 
@@ -1332,7 +1332,7 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
                                 struct azureus_db_valset *db_valset)
 {
     struct azureus_node *an = NULL;
-    struct azureus_task *aparent = NULL, *achild = NULL;
+    struct azureus_task *aparent = NULL;
     struct key lookup_id;
     struct kbucket_node_search_list_head list;
     int n_list = 0;
@@ -1340,7 +1340,6 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     bool need_find_node = FALSE;
     struct azureus_task *fvt = NULL, *svt = NULL;
     struct azureus_rpc_msg *msg = NULL;
-    int ret;
 
     DEBUG("entering ...\n");
 
@@ -1598,7 +1597,6 @@ static int
 azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
 {
     int index = 0;
-    struct node *n = NULL;
     struct azureus_db_item *item = NULL;
     int ret;
 
@@ -1623,7 +1621,8 @@ azureus_dht_add_node(struct azureus_dht *ad, struct azureus_node *an)
     DEBUG("azureus_node_count %d\n", ad->stats.mem.node);
     DEBUG("azureus_dht_node_count %d\n", azureus_dht_get_node_count(ad));
 
-    if (an->alive) {
+    if (an->node.state == NODE_STATE_GOOD) {
+//    if (an->alive) {
         /* FIXME: if this node is closer to any of the key value pairs,
          * store value it on this node */
         TAILQ_FOREACH(item, &ad->db_list, db_next) {
@@ -1671,6 +1670,10 @@ azureus_dht_delete_node(struct azureus_dht *ad, struct azureus_node *an)
 
     if (an->n_tasks) {
         /* can't really delete this node if there are tasks pending */
+        return SUCCESS;
+    }
+
+    if (an->node.state != NODE_STATE_BAD) {
         return SUCCESS;
     }
 
@@ -1769,6 +1772,10 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 
             an = azureus_node_get_ref(node);
 
+            if (an->node.state == NODE_STATE_BAD) {
+                azureus_dht_delete_node(ad, an);
+            }
+
             /* if this node is a bootstrap node, then
              * 1. If there are more than 1 node(s), then do nothing
              * 2. Else, add a ping and a find node task
@@ -1793,8 +1800,14 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
             /* If there have been no failures, and it is time to do a find node
              * then schedule a task for this node */
             //DEBUG("an->failures %d curr_time %lld an->last_find_node %lld\n", an->failures, curr_time, an->last_find_node);
+            
+            if (((an->node.state == NODE_STATE_UNKNOWN) 
+                        || (an->node.state == NODE_STATE_GOOD))
+                    && ((curr_time - an->last_find_node) > FIND_NODE_TIMEOUT)) {
+                /*
             if (!an->failures 
                     && (curr_time - an->last_find_node) > FIND_NODE_TIMEOUT) {
+*/
                 azureus_dht_add_find_node_task(ad, an, &ad->this_node->node.id);
                 continue;
             }
@@ -1802,9 +1815,12 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
             /* If not alive, and there was at least one failure, and we have
              * not reached max. failures, 
              * then schedule a ping task for this * node */
+            if (an->node.state == NODE_STATE_QUESTIONABLE) {
+                /*
             if (!an->alive 
                     && an->failures 
                     && (an->failures < MAX_RPC_FAILURES)) {
+                    */
                 azureus_dht_add_ping_task(ad, an);
                 continue;
             }
@@ -1817,9 +1833,13 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
 
             an = azureus_node_get_ref(node);
 
+            /* decide questionable nodes quickly */
+            if (an->node.state == NODE_STATE_QUESTIONABLE) {
+                /*
             if (!an->alive 
                     && an->failures
                     && (an->failures < MAX_RPC_FAILURES)) {
+                    */
                 azureus_dht_add_ping_task(ad, an);
                 continue;
             }
@@ -1918,7 +1938,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 int *n_list, 
                                 u8 min_proto_ver, 
                                 bool use_ext, 
-                                bool use_not_alive)
+                                bool use_questionable)
 {
     struct key this_id_dist;
     int index, max_index;
@@ -1959,7 +1979,9 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                     kb_next, tnn) {
 
             an = azureus_node_get_ref(tn);
-            if (!use_not_alive && !an->alive) {
+            if (use_questionable 
+                    && (an->node.state == NODE_STATE_BAD)) {
+//            if (!use_not_alive && !an->alive) {
                 continue;
             }
 
@@ -1984,7 +2006,9 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                     kb_next, tnn) {
 
                 an = azureus_node_get_ref(tn);
-                if (!use_not_alive && !an->alive) {
+            if (use_questionable 
+                    && (an->node.state == NODE_STATE_BAD)) {
+            //    if (!use_not_alive && !an->alive) {
                     continue;
                 }
 
@@ -2016,7 +2040,9 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                     kb_next, tnn) {
 
             an = azureus_node_get_ref(tn);
-            if (!use_not_alive && !an->alive) {
+            if (use_questionable 
+                    && (an->node.state == NODE_STATE_BAD)) {
+                //if (!use_not_alive && !an->alive) {
                 continue;
             }
 
@@ -2029,55 +2055,57 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
             }
 
             azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                    lookup_id,
-                                                    tn, 
-                                                    k);
-        }
-
-        if (use_ext) {
-
-            LIST_FOREACH_SAFE(tn, 
-                    &ad->kbucket[(max_index - 1) - index].ext_node_list, 
-                    kb_next, tnn) {
-
-                an = azureus_node_get_ref(tn);
-                if (!use_not_alive && !an->alive) {
-                    continue;
-                }
-
-                if (an->proto_ver < min_proto_ver) {
-                    continue;
-                }
-
-                if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
-                    continue;
-                }
-
-                azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                        lookup_id,
-                                                        tn, 
-                                                        k);
+                    lookup_id,
+                    tn, 
+                    k);
             }
+
+            if (use_ext) {
+
+                LIST_FOREACH_SAFE(tn, 
+                        &ad->kbucket[(max_index - 1) - index].ext_node_list, 
+                        kb_next, tnn) {
+
+                    an = azureus_node_get_ref(tn);
+                    if (use_questionable 
+                            && (an->node.state == NODE_STATE_BAD)) {
+                        //    if (!use_not_alive && !an->alive) {
+                        continue;
+                    }
+
+                    if (an->proto_ver < min_proto_ver) {
+                        continue;
+                    }
+
+                    if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
+                        continue;
+                    }
+
+                    azureus_dht_insert_sort_closest_node(&sort_list, 
+                            lookup_id,
+                            tn, 
+                            k);
+                    }
+                }
+            }
+
+            /* once all the parsing and sorting has been done,
+             * pick the top 'k' nodes */
+
+            count = 0;
+            TAILQ_FOREACH_SAFE(tn, &sort_list, next, tnn) {
+                TAILQ_REMOVE(&sort_list, tn, next);
+                TAILQ_INSERT_TAIL(list, tn, next);
+                count++;
+                if (count == k) {
+                    break;
+                }
+            }
+
+            *n_list = count;
+
+            return SUCCESS;
         }
-    }
-
-    /* once all the parsing and sorting has been done,
-     * pick the top 'k' nodes */
-
-    count = 0;
-    TAILQ_FOREACH_SAFE(tn, &sort_list, next, tnn) {
-        TAILQ_REMOVE(&sort_list, tn, next);
-        TAILQ_INSERT_TAIL(list, tn, next);
-        count++;
-        if (count == k) {
-            break;
-        }
-    }
-
-    *n_list = count;
-
-    return SUCCESS;
-}
 
 static int
 azureus_dht_get_node_count(struct azureus_dht *ad)
