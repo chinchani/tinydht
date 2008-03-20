@@ -49,6 +49,7 @@ struct azureus_node {
     TAILQ_HEAD(node_task_list, azureus_task)
                                         task_list;
     bool                                alive;
+    bool                                ignore;
     u64                                 last_ping;
     u64                                 last_find_node;
     int                                 failures;

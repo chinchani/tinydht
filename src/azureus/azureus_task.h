@@ -36,8 +36,8 @@ enum azureus_task_type {
 };
 
 struct azureus_task {
-    enum azureus_task_type      type;
     struct task                 task;
+    enum azureus_task_type      type;
     int                         retries;
     struct azureus_dht          *dht;
     struct azureus_db_key       *db_key;

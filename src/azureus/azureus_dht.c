@@ -439,6 +439,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     int i;
     int n_list = 0;
     u64 curr_time = 0;
+    struct azureus_task *aparent = NULL;
     int ret;
 
     ASSERT(dht && from && data);
@@ -662,10 +663,34 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
 
                 an->my_rnd_id = msg->m.find_node_rsp.rnd_id;
 
+                /* FIXME: fix this later! */
+                if (ad->est_dht_size < msg->m.find_node_rsp.est_dht_size) {
+                    ad->est_dht_size = msg->m.find_node_rsp.est_dht_size + 1;
+                }
+
                 DEBUG("number of nodes %d\n", msg->m.find_node_rsp.n_nodes);
 
                 /* FIXME: we should add these nodes to this dht if this reply
                  * was for a db task */
+
+                if (at->task.parent) {
+                    aparent = azureus_task_get_ref(at->task.parent);
+                    ASSERT(msg1->m.find_node_req.id_len 
+                            == aparent->db_key->len);
+                    if (memcmp(msg1->m.find_node_req.id, 
+                                aparent->db_key->data, 
+                                aparent->db_key->len) == 0) {
+                        /* we are doing a find node on the db_key 
+                         * - we need to notify the parent! */
+                        break;
+                    }
+
+                    ASSERT(msg1->m.find_node_req.id_len 
+                            == ad->this_node->node.id.len);
+                    ASSERT(memcmp(msg1->m.find_node_req.id, 
+                                &ad->this_node->node.id.data, 
+                                msg1->m.find_node_req.id_len) == 0);
+                } 
 
                 TAILQ_FOREACH_SAFE(tan, &msg->m.find_node_rsp.node_list, 
                         next, tann) {
@@ -680,35 +705,25 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                     azureus_dht_add_node(ad, tan);
                 }
 
-                /* FIXME: fix this later! */
-                if (ad->est_dht_size < msg->m.find_node_rsp.est_dht_size) {
-                    ad->est_dht_size = msg->m.find_node_rsp.est_dht_size + 1;
+                if (at->task.parent) {
+                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS, msg);
                 }
 
                 break;
 
             case ACT_REPLY_FIND_VALUE:
-#if 0
-                if (&msg->m.find_value_rsp.has_vals) {
-                } else {
 
-                    TAILQ_FOREACH_SAFE(tan, &msg->m.find_value_rsp.node_list, 
-                            next, tann) {
-                        TAILQ_REMOVE(&msg->m.find_value_rsp.node_list, 
-                                tan, next);
-                        if (azureus_dht_contains_node(ad, tan)) {
-                            azureus_node_delete(tan);
-                            continue;
-                        }
-                        ASSERT(0);
-                        azureus_dht_add_node(ad, tan);
-                    }
+                if (at->task.parent) {
+                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS, msg);
                 }
-#endif
 
                 break;
 
             case ACT_REPLY_STORE:
+
+                if (at->task.parent) {
+                    azureus_dht_notify_parent_db_task(ad, at, SUCCESS, msg);
+                }
 
                 break;
 
@@ -737,10 +752,6 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
             DEBUG("MY NETPOS (after)\n");
             azureus_vivaldi_pos_dump(&ad->this_node->viv_pos[VIVALDI_V1]);
             break;
-        }
-
-        if (at->task.parent) {
-            azureus_dht_notify_parent_db_task(ad, at, SUCCESS, msg);
         }
 
         DEBUG("deleting_here2\n");

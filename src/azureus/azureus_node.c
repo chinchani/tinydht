@@ -102,6 +102,20 @@ azureus_node_copy(struct azureus_node *an)
     struct azureus_node *copy = NULL;
 
     copy = azureus_node_new(an->dht, an->proto_ver, &an->ext_addr);
+    copy->cr_time = an->cr_time;
+    copy->node_status = an->node_status;
+    copy->proto_ver = an->proto_ver;
+    copy->skew = an->skew;
+    copy->rnd_id = an->rnd_id;
+    copy->my_rnd_id = an->my_rnd_id;
+    memcpy(copy->viv_pos, an->viv_pos, 
+                sizeof(struct azureus_vivaldi_pos)*MAX_RPC_VIVALDI_POS);
+    copy->alive = an->alive;
+    copy->last_ping = an->last_ping;
+    copy->last_find_node = an->last_find_node;
+    copy->failures = an->failures;
+    copy->dht = an->dht;
+
     return copy;
 }
 
