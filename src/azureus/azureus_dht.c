@@ -507,6 +507,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                 ret = key_new(&key, KEY_TYPE_SHA1, msg->m.find_node_req.id, 
                         msg->m.find_node_req.id_len);
 
+                TAILQ_INIT(&list);
                 azureus_dht_get_k_closest_nodes(ad, 
                                                 &key, 
                                                 AZUREUS_K, 
@@ -549,6 +550,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                                     msg->m.find_value_req.key.data, 
                                     msg->m.find_value_req.key.len);
 
+                    TAILQ_INIT(&list);
                     azureus_dht_get_k_closest_nodes(ad, 
                                                     &key, 
                                                     AZUREUS_K, 
@@ -1233,9 +1235,10 @@ static int
 azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
                                     struct azureus_task *aparent,
                                     struct azureus_task *achild,
-                                    struct key *key,
+                                    struct key *lookup_id,
                                     struct kbucket_node_search_list_head *list,
                                     int *n_list,
+                                    struct key *find_node_id,
                                     bool *need_find_node)
 {
     struct node *tn = NULL, *tnn = NULL;
@@ -1247,14 +1250,15 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
 
     DEBUG("entering ...\n");
 
-    ASSERT(ad && key && need_find_node && aparent);
+    ASSERT(ad && aparent && lookup_id && list && n_list 
+            && find_node_id && need_find_node);
 
     curr_time = dht_get_current_time();
     *need_find_node = FALSE;
     TAILQ_INIT(list);
 
     azureus_dht_get_k_closest_nodes(ad, 
-            key, 
+            lookup_id, 
             AZUREUS_K, 
             list, 
             n_list, 
@@ -1297,7 +1301,7 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
                      * so just create a new one */
                     DEBUG("already has a parent\n");
                     fnt = azureus_dht_find_node_task_new(ad, an, 
-                            &ad->this_node->node.id);
+                            find_node_id);
                     if (!fnt) {
                         /* FIXME: need a better way to handle this! */
                         ASSERT(0);      
@@ -1315,8 +1319,7 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
         if ((curr_time - an->last_find_node) > FIND_NODE_TIMEOUT) {
             /* we first need to send a 'find node' on this node, so that we can
              * get the random spoof id */
-            fnt = azureus_dht_find_node_task_new(ad, an, 
-                    &ad->this_node->node.id);
+            fnt = azureus_dht_find_node_task_new(ad, an, find_node_id);
             if (!fnt) {
                 /* FIXME: need a better way to handle this! */
                 ASSERT(0);      
@@ -1362,6 +1365,7 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     }
 
     aparent->type = type;
+    aparent->state = AZUREUS_TASK_STATE_FIND_NODE_THIS;
     aparent->db_key = db_key;
     aparent->db_valset = db_valset;
     aparent->tmsg = tmsg;
@@ -1369,9 +1373,16 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     bzero(&lookup_id, sizeof(struct key));
     key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
+    TAILQ_INIT(&list);
+
     /* do we need to do find node first? */
-    azureus_dht_add_find_node_db_task(ad, aparent, NULL, &lookup_id, 
-                                        &list, &n_list, 
+    azureus_dht_add_find_node_db_task(ad, 
+                                        aparent, 
+                                        NULL, 
+                                        &lookup_id, 
+                                        &list, 
+                                        &n_list, 
+                                        &ad->this_node->node.id,
                                         &need_find_node);
 
     DEBUG("need_find_node %d\n", need_find_node);
@@ -1379,6 +1390,21 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     if (need_find_node) {
         /* cannot do a find/store value now, because the k-closest nodes may
          * really not be the k-closest! */
+        goto out;
+    }
+
+    /* we can start doing a find node for db_key */
+    azureus_dht_add_find_node_db_task(ad, 
+                                        aparent,
+                                        NULL, 
+                                        &lookup_id,
+                                        &aparent->node_list, 
+                                        &aparent->n_nodes, 
+                                        &lookup_id,
+                                        &need_find_node);
+
+    if (need_find_node) {
+        aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
         goto out;
     }
 
@@ -1475,8 +1501,16 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
             bzero(&lookup_id, sizeof(struct key));
             key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
-            azureus_dht_add_find_node_db_task(ad, aparent, achild, &lookup_id, 
-                                            &list, &n_list, &need_find_node);
+            TAILQ_INIT(&list);
+
+            azureus_dht_add_find_node_db_task(ad, 
+                                                aparent, 
+                                                achild, 
+                                                &lookup_id, 
+                                                &list, 
+                                                &n_list, 
+                                                &ad->this_node->node.id, 
+                                                &need_find_node);
 
             if (need_find_node) {
                 /* more work to do, and more waiting, so cannot delete the
@@ -1971,7 +2005,7 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
         ASSERT(0);
     }
 
-    TAILQ_INIT(list);
+    // TAILQ_INIT(list);   /* FIXME: don't do an TAILQ_INIT?? */
     TAILQ_INIT(&sort_list);
 
     ret = key_distance(lookup_id, &ad->this_node->node.id, &this_id_dist);

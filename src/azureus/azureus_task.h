@@ -35,9 +35,16 @@ enum azureus_task_type {
     AZUREUS_TASK_TYPE_STORE_VALUE
 };
 
+enum azureus_task_state {
+    AZUREUS_TASK_STATE_UNKNOWN = 0,
+    AZUREUS_TASK_STATE_FIND_NODE_THIS,
+    AZUREUS_TASK_STATE_FIND_NODE_DB_KEY
+};
+
 struct azureus_task {
     struct task                 task;
     enum azureus_task_type      type;
+    enum azureus_task_state     state;
     int                         retries;
     struct azureus_dht          *dht;
     struct azureus_db_key       *db_key;
@@ -46,7 +53,7 @@ struct azureus_task {
     TAILQ_ENTRY(azureus_task)   next_node_task;
     struct kbucket_node_search_list_head 
                                 node_list;
-    int                         n_node;
+    int                         n_nodes;
     struct tinydht_msg          *tmsg;
 };
 
