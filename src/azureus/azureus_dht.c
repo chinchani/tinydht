@@ -431,13 +431,13 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
     struct node *tn = NULL, *tnn = NULL;
     struct key key;
     struct kbucket_node_search_list_head list;
+    int n_list = 0;
     struct azureus_db_item *db_item = NULL;
     struct azureus_db_key *db_key = NULL, *db_keyn = NULL;
     struct azureus_db_valset *db_valset = NULL, *db_valsetn = NULL;
     bool found = FALSE;
     float rtt = 0.0;
     int i;
-    int n_list = 0;
     u64 curr_time = 0;
     struct azureus_task *aparent = NULL;
     int ret;
@@ -1365,10 +1365,11 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     }
 
     aparent->type = type;
-    aparent->state = AZUREUS_TASK_STATE_FIND_NODE_THIS;
     aparent->db_key = db_key;
     aparent->db_valset = db_valset;
     aparent->tmsg = tmsg;
+
+    aparent->state = AZUREUS_TASK_STATE_FIND_NODE_THIS;
 
     bzero(&lookup_id, sizeof(struct key));
     key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
@@ -1388,12 +1389,15 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     DEBUG("need_find_node %d\n", need_find_node);
         
     if (need_find_node) {
-        /* cannot do a find/store value now, because the k-closest nodes may
-         * really not be the k-closest! */
+        /* cannot do a find/store value now, 
+         * because we are not done looking up our own id */
         goto out;
-    }
+    } 
 
     /* we can start doing a find node for db_key */
+
+    aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+
     azureus_dht_add_find_node_db_task(ad, 
                                         aparent,
                                         NULL, 
@@ -1404,7 +1408,8 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
                                         &need_find_node);
 
     if (need_find_node) {
-        aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+        /* cannot do a find/store value now, 
+         * because we are not done looking up closest nodes to the db_key */
         goto out;
     }
 
@@ -1475,11 +1480,80 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     ASSERT(achild->task.parent);
     aparent = azureus_task_get_ref(achild->task.parent);
     ASSERT(aparent);
+    ASSERT((aparent->state == AZUREUS_TASK_STATE_FIND_NODE_THIS) 
+            || (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_DB_KEY));
 
     task_delete_child_task(&achild->task);
 
     DEBUG("check1 %p %p %p %d\n", &achild->task, achild->task.parent, 
             &aparent->task, aparent->task.n_child);
+
+    if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_THIS) {
+
+        if (aparent->task.n_child != 0) {
+            /* we have more waiting to do! */
+            DEBUG("aparent %p n_child %d type %d status %d\n", 
+                    aparent, aparent->task.n_child, achild->type, status);
+            return SUCCESS;
+
+        } else {
+            /* no more waiting to do 
+             * 1. do we need to do more find node on this dht id? 
+             * 2. if not, lets start a find node on the db key */
+
+            bzero(&lookup_id, sizeof(struct key));
+            key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
+
+            TAILQ_INIT(&list);
+
+            azureus_dht_add_find_node_db_task(ad, 
+                                                aparent, 
+                                                achild, 
+                                                &lookup_id, 
+                                                &list, 
+                                                &n_list, 
+                                                &ad->this_node->node.id, 
+                                                &need_find_node);
+
+            if (need_find_node) {
+                /* we have more waiting to do! */
+                DEBUG("aparent %p n_child %d type %d status %d\n", 
+                        aparent, aparent->task.n_child, achild->type, status);
+                return SUCCESS;
+            } else {
+                /* we can now just do a find node on the db key */
+                aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+            }
+        }
+
+    } else if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_DB_KEY) {
+        if (aparent->task.n_child != 0) {
+            /* we have more waiting to do! */
+            DEBUG("aparent %p n_child %d type %d status %d\n", 
+                    aparent, aparent->task.n_child, achild->type, status);
+            return SUCCESS;
+
+        } else {
+            bzero(&lookup_id, sizeof(struct key));
+            key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
+
+            TAILQ_INIT(&list);
+
+            azureus_dht_add_find_node_db_task(ad, 
+                                                aparent, 
+                                                achild, 
+                                                &lookup_id, 
+                                                &list, 
+                                                &n_list, 
+                                                &lookup_id, 
+                                                &need_find_node);
+            if (need_find_node) {
+            } else {
+                /* we are now ready to do the actual find/store value */
+            }
+        }
+
+    }
 
     if (aparent->task.n_child != 0) {
         /* we have more waiting to do! */
@@ -1996,16 +2070,15 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
     /* First, find the key distance between the lookup_id and this dht id.
      * This will give the subtree/kbucket to start looking in.
      * Then, find and sort the nodes closest to the lookup_id from a list of
-     * candidate nodes, which could all of the nodes in this dht. */
+     * candidate nodes, which could be all of the nodes in this dht. */
 
     ASSERT(ad && lookup_id && k && list && n_list); 
-    
+
     if (key_cmp(lookup_id, &ad->this_node->node.id) == 0) {
         /* should never lookup this dht's id */
         ASSERT(0);
     }
 
-    // TAILQ_INIT(list);   /* FIXME: don't do an TAILQ_INIT?? */
     TAILQ_INIT(&sort_list);
 
     ret = key_distance(lookup_id, &ad->this_node->node.id, &this_id_dist);
@@ -2020,74 +2093,12 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
         }
 
         LIST_FOREACH_SAFE(tn, 
-                    &ad->kbucket[(max_index - 1) - index].node_list, 
-                    kb_next, tnn) {
+                &ad->kbucket[(max_index - 1) - index].node_list, 
+                kb_next, tnn) {
 
             an = azureus_node_get_ref(tn);
             if (use_questionable 
                     && (an->node.state == NODE_STATE_BAD)) {
-//            if (!use_not_alive && !an->alive) {
-                continue;
-            }
-
-            if (an->proto_ver < min_proto_ver) {
-                continue;
-            }
-
-            if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
-                continue;
-            }
-
-            azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                    lookup_id,
-                                                    tn, 
-                                                    k);
-        }
-
-        if (use_ext) {
-
-            LIST_FOREACH_SAFE(tn, 
-                    &ad->kbucket[(max_index - 1) - index].ext_node_list, 
-                    kb_next, tnn) {
-
-                an = azureus_node_get_ref(tn);
-            if (use_questionable 
-                    && (an->node.state == NODE_STATE_BAD)) {
-            //    if (!use_not_alive && !an->alive) {
-                    continue;
-                }
-
-                if (an->proto_ver < min_proto_ver) {
-                    continue;
-                }
-
-                if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
-                    continue;
-                }
-
-                azureus_dht_insert_sort_closest_node(&sort_list, 
-                                                        lookup_id,
-                                                        tn, 
-                                                        k);
-            }
-        }
-    }
-
-    /* we walk backwards now - 0th bit, 1st bit ... 159th bit */
-    for (index = 0; (index <= (max_index - 1)); index++) {
-
-        if (key_nth_bit(&this_id_dist, index) != 0) {
-            continue;
-        }
-
-        LIST_FOREACH_SAFE(tn, 
-                    &ad->kbucket[(max_index - 1) - index].node_list, 
-                    kb_next, tnn) {
-
-            an = azureus_node_get_ref(tn);
-            if (use_questionable 
-                    && (an->node.state == NODE_STATE_BAD)) {
-                //if (!use_not_alive && !an->alive) {
                 continue;
             }
 
@@ -2103,54 +2114,112 @@ azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                     lookup_id,
                     tn, 
                     k);
-            }
-
-            if (use_ext) {
-
-                LIST_FOREACH_SAFE(tn, 
-                        &ad->kbucket[(max_index - 1) - index].ext_node_list, 
-                        kb_next, tnn) {
-
-                    an = azureus_node_get_ref(tn);
-                    if (use_questionable 
-                            && (an->node.state == NODE_STATE_BAD)) {
-                        //    if (!use_not_alive && !an->alive) {
-                        continue;
-                    }
-
-                    if (an->proto_ver < min_proto_ver) {
-                        continue;
-                    }
-
-                    if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
-                        continue;
-                    }
-
-                    azureus_dht_insert_sort_closest_node(&sort_list, 
-                            lookup_id,
-                            tn, 
-                            k);
-                    }
-                }
-            }
-
-            /* once all the parsing and sorting has been done,
-             * pick the top 'k' nodes */
-
-            count = 0;
-            TAILQ_FOREACH_SAFE(tn, &sort_list, next, tnn) {
-                TAILQ_REMOVE(&sort_list, tn, next);
-                TAILQ_INSERT_TAIL(list, tn, next);
-                count++;
-                if (count == k) {
-                    break;
-                }
-            }
-
-            *n_list = count;
-
-            return SUCCESS;
         }
+
+        if (use_ext) {
+
+            LIST_FOREACH_SAFE(tn, 
+                    &ad->kbucket[(max_index - 1) - index].ext_node_list, 
+                    kb_next, tnn) {
+
+                an = azureus_node_get_ref(tn);
+                if (use_questionable 
+                        && (an->node.state == NODE_STATE_BAD)) {
+                    continue;
+                }
+
+                if (an->proto_ver < min_proto_ver) {
+                    continue;
+                }
+
+                if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
+                    continue;
+                }
+
+                azureus_dht_insert_sort_closest_node(&sort_list, 
+                        lookup_id,
+                        tn, 
+                        k);
+            }
+        }
+    }
+
+    /* we walk backwards now - 0th bit, 1st bit ... 159th bit */
+    for (index = 0; (index <= (max_index - 1)); index++) {
+
+        if (key_nth_bit(&this_id_dist, index) != 0) {
+            continue;
+        }
+
+        LIST_FOREACH_SAFE(tn, 
+                &ad->kbucket[(max_index - 1) - index].node_list, 
+                kb_next, tnn) {
+
+            an = azureus_node_get_ref(tn);
+            if (use_questionable 
+                    && (an->node.state == NODE_STATE_BAD)) {
+                continue;
+            }
+
+            if (an->proto_ver < min_proto_ver) {
+                continue;
+            }
+
+            if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
+                continue;
+            }
+
+            azureus_dht_insert_sort_closest_node(&sort_list, 
+                    lookup_id,
+                    tn, 
+                    k);
+        }
+
+        if (use_ext) {
+
+            LIST_FOREACH_SAFE(tn, 
+                    &ad->kbucket[(max_index - 1) - index].ext_node_list, 
+                    kb_next, tnn) {
+
+                an = azureus_node_get_ref(tn);
+                if (use_questionable 
+                        && (an->node.state == NODE_STATE_BAD)) {
+                    continue;
+                }
+
+                if (an->proto_ver < min_proto_ver) {
+                    continue;
+                }
+
+                if (an->node_status == AZUREUS_NODE_STATUS_BOOTSTRAP) {
+                    continue;
+                }
+
+                azureus_dht_insert_sort_closest_node(&sort_list, 
+                        lookup_id,
+                        tn, 
+                        k);
+            }
+        }
+    }
+
+    /* once all the parsing and sorting has been done,
+     * pick the top 'k' nodes */
+
+    count = 0;
+    TAILQ_FOREACH_SAFE(tn, &sort_list, next, tnn) {
+        TAILQ_REMOVE(&sort_list, tn, next);
+        TAILQ_INSERT_TAIL(list, tn, next);
+        count++;
+        if (count == k) {
+            break;
+        }
+    }
+
+    *n_list += count;
+
+    return SUCCESS;
+}
 
 static int
 azureus_dht_get_node_count(struct azureus_dht *ad)
