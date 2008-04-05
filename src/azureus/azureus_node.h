@@ -71,6 +71,7 @@ azureus_node_get_ref(struct node *node)
 struct azureus_node * azureus_node_new(struct azureus_dht *ad, u8 proto_ver, 
                                         struct sockaddr_storage *ss);
 void azureus_node_delete(struct azureus_node *n);
+struct azureus_node * azureus_node_copy(struct azureus_node *an);
 
 int azureus_node_get_id(struct key *k, struct sockaddr_storage *ss, 
                         u8 proto_ver);

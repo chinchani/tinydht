@@ -89,6 +89,12 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 bool use_ext, 
                                 bool use_questionable);
 
+static void azureus_dht_insert_sort_closest_node(
+                                struct kbucket_node_search_list_head *list,
+                                struct key *lookup_id,
+                                struct node *candidate,
+                                int k);
+
 static int azureus_dht_get_node_count(struct azureus_dht *ad);
 
 static int azureus_dht_kbucket_refresh(struct azureus_dht *ad);
@@ -684,6 +690,7 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
                                 aparent->db_key->len) == 0) {
                         /* we are doing a find node on the db_key 
                          * - we need to notify the parent! */
+                        azureus_dht_notify_parent_db_task(ad, at, SUCCESS, msg);
                         break;
                     }
 
@@ -1255,6 +1262,7 @@ azureus_dht_add_find_node_db_task(struct azureus_dht *ad,
 
     curr_time = dht_get_current_time();
     *need_find_node = FALSE;
+
     TAILQ_INIT(list);
 
     azureus_dht_get_k_closest_nodes(ad, 
@@ -1345,14 +1353,14 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
                                 struct azureus_db_key *db_key, 
                                 struct azureus_db_valset *db_valset)
 {
-    struct azureus_node *an = NULL;
+    struct azureus_node *an = NULL, *ancopy = NULL;
     struct azureus_task *aparent = NULL;
     struct key lookup_id;
     struct kbucket_node_search_list_head list;
     int n_list = 0;
     struct node *tn = NULL, *tnn = NULL;
     bool need_find_node = FALSE;
-    struct azureus_task *fvt = NULL, *svt = NULL;
+    struct azureus_task *fnt = NULL;
     struct azureus_rpc_msg *msg = NULL;
 
     DEBUG("entering ...\n");
@@ -1389,14 +1397,42 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
     DEBUG("need_find_node %d\n", need_find_node);
         
     if (need_find_node) {
-        /* cannot do a find/store value now, 
-         * because we are not done looking up our own id */
+         /* we are not done looking up our own id */
         goto out;
-    } 
+    } else {
+        /* make a copy of the k-closest nodes because we will be operating only
+         * on the copies from now on */
 
+        ASSERT(aparent->n_nodes == 0);
+
+        TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+            an = azureus_node_get_ref(tn);
+            ancopy = azureus_node_copy(an);
+
+            TAILQ_INSERT_TAIL(&aparent->node_list, &ancopy->node, next);
+            aparent->n_nodes++;
+
+            fnt = azureus_dht_find_node_task_new(ad, ancopy, &lookup_id);
+            if (!fnt) {
+                /* FIXME: need a better way to handle this! */
+                ASSERT(0);      
+            }
+
+            task_add_child_task(&aparent->task, &fnt->task);
+            azureus_dht_add_task(ad, fnt);
+            msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
+            azureus_dht_rpc_tx(ad, fnt, msg);
+        }
+
+        goto out;
+    }
+
+#if 0
     /* we can start doing a find node for db_key */
 
     aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+
+
 
     azureus_dht_add_find_node_db_task(ad, 
                                         aparent,
@@ -1447,6 +1483,7 @@ azureus_dht_add_parent_db_task(struct azureus_dht *ad,
             azureus_dht_rpc_tx(ad, svt, msg);
         }
     }
+#endif
 
 out:
     return aparent;
@@ -1466,10 +1503,14 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     int n_list = 0;
     bool need_find_node = FALSE;
     struct azureus_task *fvt = NULL, *svt = NULL;
-    struct azureus_node *an = NULL;
+    struct azureus_node *an = NULL, *ann = NULL;
     struct node *tn = NULL, *tnn = NULL;
     struct azureus_node *tan = NULL, *tann = NULL;
+    bool found = FALSE;
     struct tinydht_msg *tmsg = NULL;
+    struct azureus_node *ancopy = NULL;
+    struct azureus_task *fnt = NULL;
+    u64 curr_time;
     int ret;
 
     DEBUG("entering ...\n");
@@ -1483,7 +1524,12 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     ASSERT((aparent->state == AZUREUS_TASK_STATE_FIND_NODE_THIS) 
             || (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_DB_KEY));
 
+    curr_time = dht_get_current_time();
+
     task_delete_child_task(&achild->task);
+
+    bzero(&lookup_id, sizeof(struct key));
+    key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
     DEBUG("check1 %p %p %p %d\n", &achild->task, achild->task.parent, 
             &aparent->task, aparent->task.n_child);
@@ -1492,6 +1538,9 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
 
         if (aparent->task.n_child != 0) {
             /* we have more waiting to do! */
+            /* FIXME: we could optimize this, by initiating the next
+             * find node task right away! */
+
             DEBUG("aparent %p n_child %d type %d status %d\n", 
                     aparent, aparent->task.n_child, achild->type, status);
             return SUCCESS;
@@ -1501,19 +1550,16 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
              * 1. do we need to do more find node on this dht id? 
              * 2. if not, lets start a find node on the db key */
 
-            bzero(&lookup_id, sizeof(struct key));
-            key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
-
             TAILQ_INIT(&list);
 
             azureus_dht_add_find_node_db_task(ad, 
-                                                aparent, 
-                                                achild, 
-                                                &lookup_id, 
-                                                &list, 
-                                                &n_list, 
-                                                &ad->this_node->node.id, 
-                                                &need_find_node);
+                    aparent, 
+                    achild, 
+                    &lookup_id, 
+                    &list, 
+                    &n_list, 
+                    &ad->this_node->node.id, 
+                    &need_find_node);
 
             if (need_find_node) {
                 /* we have more waiting to do! */
@@ -1523,10 +1569,54 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
             } else {
                 /* we can now just do a find node on the db key */
                 aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+
+                ASSERT(aparent->n_nodes == 0);
+
+                TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+                    an = azureus_node_get_ref(tn);
+                    ancopy = azureus_node_copy(an);
+
+                    TAILQ_INSERT_TAIL(&aparent->node_list, &ancopy->node, next);
+                    aparent->n_nodes++;
+
+                    fnt = azureus_dht_find_node_task_new(ad, ancopy, &lookup_id);
+                    if (!fnt) {
+                        /* FIXME: need a better way to handle this! */
+                        ASSERT(0);      
+                    }
+
+                    task_add_child_task(&aparent->task, &fnt->task);
+                    azureus_dht_add_task(ad, fnt);
+                    msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
+                    azureus_dht_rpc_tx(ad, fnt, msg);
+                }
             }
         }
 
     } else if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_DB_KEY) {
+
+        TAILQ_FOREACH_SAFE(an, &reply->m.find_node_rsp.node_list, next, ann) {
+            /* Add these nodes into the aparent->node_list */
+            found = FALSE;
+            TAILQ_FOREACH_SAFE(tn, &aparent->node_list, next, tnn) {
+                if (key_cmp(&an->node.id, &tn->id) == 0) {
+                    found = TRUE;
+                    break;
+                }
+            }
+
+            if (found) {
+                continue;
+            }
+
+            TAILQ_REMOVE(&reply->m.find_node_rsp.node_list, an, next);
+
+            azureus_dht_insert_sort_closest_node(&aparent->node_list, 
+                                                    &lookup_id,
+                                                    &an->node, 
+                                                    aparent->n_nodes+1);
+        }
+
         if (aparent->task.n_child != 0) {
             /* we have more waiting to do! */
             DEBUG("aparent %p n_child %d type %d status %d\n", 
@@ -1534,19 +1624,17 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
             return SUCCESS;
 
         } else {
-            bzero(&lookup_id, sizeof(struct key));
-            key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
-            TAILQ_INIT(&list);
+            /* we start looking in aparent->node_list instead of the kbuckets
+             * */
 
-            azureus_dht_add_find_node_db_task(ad, 
-                                                aparent, 
-                                                achild, 
-                                                &lookup_id, 
-                                                &list, 
-                                                &n_list, 
-                                                &lookup_id, 
-                                                &need_find_node);
+            TAILQ_FOREACH_SAFE(tan, &aparent->node_list, next, tann) {
+                if ((curr_time - tan->last_find_node) > FIND_NODE_TIMEOUT) {
+                    // send a find node and wait 
+                    need_find_node = TRUE;
+                }
+            }
+
             if (need_find_node) {
             } else {
                 /* we are now ready to do the actual find/store value */
