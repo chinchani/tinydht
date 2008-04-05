@@ -1,0 +1,6 @@
+Roadmap of things that need to get done for TinyDHT
+
+- Find/Store Value (work-in-progress)
+- Estimated DHT size
+- Memory leaks
+- Repair network if it flaps
