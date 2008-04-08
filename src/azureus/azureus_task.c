@@ -74,9 +74,11 @@ azureus_task_delete(struct azureus_task *at)
         ASSERT(!task->parent);
     } else if (task->type == TASK_TYPE_PARENT) {
         DEBUG("deleting parent\n");
-        azureus_db_key_delete(at->db_key);
-        // azureus_db_valset_delete(at->db_valset);
         ASSERT(!task->n_child);
+        if (at->type == AZUREUS_TASK_TYPE_FIND_VALUE) {
+            azureus_db_key_delete(at->db_key);
+            azureus_db_valset_delete(at->db_valset);
+        }
     }
 
     free(at);

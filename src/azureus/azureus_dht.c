@@ -89,7 +89,7 @@ static int azureus_dht_get_k_closest_nodes(struct azureus_dht *ad,
                                 bool use_ext, 
                                 bool use_questionable);
 
-static void azureus_dht_insert_sort_closest_node(
+static int azureus_dht_insert_sort_closest_node(
                                 struct kbucket_node_search_list_head *list,
                                 struct key *lookup_id,
                                 struct node *candidate,
@@ -1544,8 +1544,8 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     bzero(&lookup_id, sizeof(struct key));
     key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
 
-    DEBUG("check1 %p %p %p %d\n", &achild->task, achild->task.parent, 
-            &aparent->task, aparent->task.n_child);
+    DEBUG("check1 %p %p %p %d %d\n", &achild->task, achild->task.parent, 
+            &aparent->task, aparent->task.n_child, aparent->state);
 
     if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_THIS) {
 
@@ -1575,13 +1575,15 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                                                 &need_find_node);
 
             if (need_find_node) {
+
                 /* we have more waiting to do! */
                 DEBUG("aparent %p n_child %d type %d status %d\n", 
                         aparent, aparent->task.n_child, achild->type, status);
                 return SUCCESS;
+
             } else {
 
-                DEBUG("starting a find node in db key\n");
+                DEBUG("starting a find node for db key\n");
 
                 /* we can now just do a find node on the db key */
                 aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
@@ -1589,8 +1591,10 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                 ASSERT(aparent->n_nodes == 0);
 
                 TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+
                     an = azureus_node_get_ref(tn);
                     ancopy = azureus_node_copy(an);
+                    ASSERT(ancopy);
 
                     TAILQ_INSERT_TAIL(&aparent->node_list, &ancopy->node, next);
                     aparent->n_nodes++;
@@ -1614,45 +1618,47 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
 
     } else if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_DB_KEY) {
 
-        if (reply == NULL) {
-            /* FIXME: we don't have a reply to work with */
-        }
+        if (reply != NULL) {
 
-        TAILQ_FOREACH_SAFE(an, &reply->m.find_node_rsp.node_list, next, ann) {
-            /* Add these nodes into the aparent->node_list */
-            found = FALSE;
-            TAILQ_FOREACH_SAFE(tn, &aparent->node_list, next, tnn) {
-                if (key_cmp(&an->node.id, &tn->id) == 0) {
-                    found = TRUE;
-                    break;
+            TAILQ_FOREACH_SAFE(an, &reply->m.find_node_rsp.node_list, 
+                    next, ann) {
+
+                /* Add these nodes into the aparent->node_list */
+                found = FALSE;
+                TAILQ_FOREACH_SAFE(tn, &aparent->node_list, next, tnn) {
+                    if (key_cmp(&an->node.id, &tn->id) == 0) {
+                        found = TRUE;
+                        break;
+                    }
                 }
+
+                if (found) {
+                    continue;
+                }
+
+                /* no need to make a copy */
+
+                TAILQ_REMOVE(&reply->m.find_node_rsp.node_list, an, next);
+
+                ret = azureus_dht_insert_sort_closest_node(&aparent->node_list, 
+                        &lookup_id,
+                        &an->node, 
+                        aparent->n_nodes+1);
+                ASSERT(ret == SUCCESS);
+                aparent->n_nodes += 1;
+
+                fnt = azureus_dht_find_node_task_new(ad, an, 
+                        &lookup_id);
+                if (!fnt) {
+                    /* FIXME: need a better way to handle this! */
+                    ASSERT(0);      
+                }
+
+                task_add_child_task(&aparent->task, &fnt->task);
+                azureus_dht_add_task(ad, fnt);
+                msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
+                azureus_dht_rpc_tx(ad, fnt, msg);
             }
-
-            if (found) {
-                continue;
-            }
-
-            /* no need to make a copy */
-
-            TAILQ_REMOVE(&reply->m.find_node_rsp.node_list, an, next);
-
-            azureus_dht_insert_sort_closest_node(&aparent->node_list, 
-                    &lookup_id,
-                    &an->node, 
-                    aparent->n_nodes+1);
-            aparent->n_nodes += 1;
-
-            fnt = azureus_dht_find_node_task_new(ad, an, 
-                    &lookup_id);
-            if (!fnt) {
-                /* FIXME: need a better way to handle this! */
-                ASSERT(0);      
-            }
-
-            task_add_child_task(&aparent->task, &fnt->task);
-            azureus_dht_add_task(ad, fnt);
-            msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
-            azureus_dht_rpc_tx(ad, fnt, msg);
         }
 
         if (aparent->task.n_child != 0) {
@@ -2099,7 +2105,7 @@ azureus_dht_kbucket_refresh(struct azureus_dht *ad)
     return SUCCESS;
 }
 
-static void
+static int
 azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
                                         struct key *lookup_id,
                                         struct node *candidate,
@@ -2119,7 +2125,7 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
 
     if (TAILQ_EMPTY(list)) {
         TAILQ_INSERT_TAIL(list, candidate, next);
-        return;
+        return SUCCESS;
     }
 
     key_distance(lookup_id, &candidate->id, &dcandidate);
@@ -2138,11 +2144,11 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
             if (key_cmp(&dcandidate, &d1) < 0) {
                 DEBUG("insert before\n");
                 TAILQ_INSERT_BEFORE(tn, candidate, next);
-                return;
+                return SUCCESS;
             } else {
                 DEBUG("insert after\n");
                 TAILQ_INSERT_AFTER(list, tn, candidate, next);
-                return;
+                return SUCCESS;
             }
 
         } else {
@@ -2155,12 +2161,12 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
             if (key_cmp(&dcandidate, &d1) < 0) {
                 DEBUG("insert before\n");
                 TAILQ_INSERT_BEFORE(tn, candidate, next);
-                return;
+                return SUCCESS;
             } else if (key_cmp(&d1, &dcandidate) < 0 
                     && key_cmp(&dcandidate, &d2) < 0) {
                 DEBUG("insert after\n");
                 TAILQ_INSERT_AFTER(list, tn, candidate, next);
-                return;
+                return SUCCESS;
             } 
         }
 
@@ -2168,11 +2174,11 @@ azureus_dht_insert_sort_closest_node(struct kbucket_node_search_list_head *list,
         ASSERT(count <= k);
         if (count == k) {
             /* "new" node is not a top-k candidate, so just ignore it */
-            return;
+            return FAILURE;
         }
     }
 
-    return;
+    return FAILURE;
 }
 
 static int
