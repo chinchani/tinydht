@@ -876,20 +876,6 @@ azureus_dht_get(struct dht *dht, struct tinydht_msg *tmsg)
     crypto_get_sha1_digest(tmsg->req.key, tmsg->req.key_len, db_key->data);
     db_key->len = MAX_KEY_SIZE;
 
-#if 0
-    /* FIXME: Should we cache the "found" db item? */
-    item = azureus_dht_find_db_item(ad, &key);
-    if (!item) {
-        return FAILURE;
-    }
-
-    /* at present, we expect only one value per key */
-    val = TAILQ_FIRST(&item->valset->val_list);
-
-    memcpy(msg->rsp.val, val->data, val->len);
-    msg->rsp.val_len = val->len;
-#endif
-
     at = azureus_dht_add_parent_db_task(ad, tmsg, AZUREUS_TASK_TYPE_FIND_VALUE, 
                                             db_key, NULL);
     if (!at) {
@@ -1515,6 +1501,7 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     struct kbucket_node_search_list_head list;
     int n_list = 0;
     bool need_find_node = FALSE;
+    struct azureus_task *fnt = NULL;
     struct azureus_task *fvt = NULL, *svt = NULL;
     struct azureus_node *an = NULL, *ann = NULL;
     struct node *tn = NULL, *tnn = NULL;
@@ -1522,7 +1509,7 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     bool found = FALSE;
     struct tinydht_msg *tmsg = NULL;
     struct azureus_node *ancopy = NULL;
-    struct azureus_task *fnt = NULL;
+    struct azureus_db_item *db_item = NULL;
     u64 curr_time;
     int count = 0;
     int ret;
@@ -1548,60 +1535,116 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     DEBUG("check1 %p %p %p %d %d\n", &achild->task, achild->task.parent, 
             &aparent->task, aparent->task.n_child, aparent->state);
 
-    if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_THIS) {
+    switch (aparent->state) {
 
-        if (aparent->task.n_child != 0) {
-            /* we have more waiting to do! */
-            /* FIXME: we could optimize this, by initiating the next
-             * find node task right away! */
+        case AZUREUS_TASK_STATE_FIND_NODE_THIS:
 
-            DEBUG("aparent %p n_child %d type %d status %d\n", 
-                    aparent, aparent->task.n_child, achild->type, status);
-            return SUCCESS;
-
-        } else {
-            /* no more waiting to do 
-             * 1. do we need to do more find node on this dht id? 
-             * 2. if not, lets start a find node on the db key */
-
-            TAILQ_INIT(&list);
-
-            azureus_dht_add_find_node_db_task(ad, 
-                                                aparent, 
-                                                achild, 
-                                                &lookup_id, 
-                                                &list, 
-                                                &n_list, 
-                                                &ad->this_node->node.id, 
-                                                &need_find_node);
-
-            if (need_find_node) {
-
+            if (aparent->task.n_child != 0) {
                 /* we have more waiting to do! */
+                /* FIXME: we could optimize this, by initiating the next
+                 * find node task right away! */
+
                 DEBUG("aparent %p n_child %d type %d status %d\n", 
                         aparent, aparent->task.n_child, achild->type, status);
                 return SUCCESS;
 
             } else {
+                /* no more waiting to do 
+                 * 1. do we need to do more find node on this dht id? 
+                 * 2. if not, lets start a find node on the db key */
 
-                DEBUG("starting a find node for db key\n");
+                TAILQ_INIT(&list);
 
-                /* we can now just do a find node on the db key */
-                aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+                azureus_dht_add_find_node_db_task(ad, 
+                        aparent, 
+                        achild, 
+                        &lookup_id, 
+                        &list, 
+                        &n_list, 
+                        &ad->this_node->node.id, 
+                        &need_find_node);
 
-                ASSERT(aparent->n_nodes == 0);
+                if (need_find_node) {
 
-                TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+                    /* we have more waiting to do! */
+                    DEBUG("aparent %p n_child %d type %d status %d\n", 
+                            aparent, aparent->task.n_child, 
+                            achild->type, status);
 
-                    an = azureus_node_get_ref(tn);
-                    ancopy = azureus_node_copy(an);
-                    ASSERT(ancopy);
+                    return SUCCESS;
 
-                    TAILQ_INSERT_TAIL(&aparent->node_list, &ancopy->node, next);
-                    aparent->n_nodes++;
+                } else {
 
-                    fnt = azureus_dht_find_node_task_new(ad, ancopy, 
-                                                            &lookup_id);
+                    DEBUG("starting a find node for db key\n");
+
+                    /* we can now just do a find node on the db key */
+                    aparent->state = AZUREUS_TASK_STATE_FIND_NODE_DB_KEY;
+
+                    ASSERT(aparent->n_nodes == 0);
+
+                    TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+
+                        an = azureus_node_get_ref(tn);
+                        ancopy = azureus_node_copy(an);
+                        ASSERT(ancopy);
+
+                        TAILQ_INSERT_TAIL(&aparent->node_list, &ancopy->node, 
+                                            next);
+                        aparent->n_nodes++;
+
+                        fnt = azureus_dht_find_node_task_new(ad, ancopy, 
+                                &lookup_id);
+                        if (!fnt) {
+                            /* FIXME: need a better way to handle this! */
+                            ASSERT(0);      
+                        }
+
+                        task_add_child_task(&aparent->task, &fnt->task);
+                        azureus_dht_add_task(ad, fnt);
+                        msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
+                        azureus_dht_rpc_tx(ad, fnt, msg);
+                    }
+
+                    DEBUG("aparent->n_nodes %d\n", aparent->n_nodes);
+                }
+            }
+
+            return SUCCESS;
+
+        case AZUREUS_TASK_STATE_FIND_NODE_DB_KEY:
+
+            if (reply != NULL) {
+
+                TAILQ_FOREACH_SAFE(an, &reply->m.find_node_rsp.node_list, 
+                        next, ann) {
+
+                    /* Add these nodes into the aparent->node_list */
+                    found = FALSE;
+                    TAILQ_FOREACH_SAFE(tn, &aparent->node_list, next, tnn) {
+                        if (key_cmp(&an->node.id, &tn->id) == 0) {
+                            found = TRUE;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        continue;
+                    }
+
+                    /* no need to make a copy */
+
+                    TAILQ_REMOVE(&reply->m.find_node_rsp.node_list, an, next);
+
+                    ret = azureus_dht_insert_sort_closest_node(
+                                                    &aparent->node_list, 
+                                                    &lookup_id,
+                                                    &an->node, 
+                                                    aparent->n_nodes+1);
+                    ASSERT(ret == SUCCESS);
+                    aparent->n_nodes += 1;
+
+                    fnt = azureus_dht_find_node_task_new(ad, an, 
+                            &lookup_id);
                     if (!fnt) {
                         /* FIXME: need a better way to handle this! */
                         ASSERT(0);      
@@ -1612,143 +1655,113 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
                     msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
                     azureus_dht_rpc_tx(ad, fnt, msg);
                 }
-
-                DEBUG("aparent->n_nodes %d\n", aparent->n_nodes);
             }
-        }
 
-    } else if (aparent->state == AZUREUS_TASK_STATE_FIND_NODE_DB_KEY) {
+            if (aparent->task.n_child != 0) {
+                /* we have more waiting to do! */
+                DEBUG("aparent %p n_child %d type %d status %d\n", 
+                        aparent, aparent->task.n_child, achild->type, status);
+                return SUCCESS;
 
-        if (reply != NULL) {
+            } 
 
-            TAILQ_FOREACH_SAFE(an, &reply->m.find_node_rsp.node_list, 
-                    next, ann) {
+            /* finally, we are ready to do the actual find/store value */
 
-                /* Add these nodes into the aparent->node_list */
-                found = FALSE;
-                TAILQ_FOREACH_SAFE(tn, &aparent->node_list, next, tnn) {
-                    if (key_cmp(&an->node.id, &tn->id) == 0) {
-                        found = TRUE;
-                        break;
-                    }
-                }
+            if (aparent->type == AZUREUS_TASK_TYPE_FIND_VALUE) {
+                aparent->state = AZUREUS_TASK_STATE_FIND_VALUE;
+            } else if (aparent->type == AZUREUS_TASK_TYPE_STORE_VALUE) {
+                aparent->state = AZUREUS_TASK_STATE_STORE_VALUE;
+            } 
 
-                if (found) {
+            count = 0;
+
+            TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
+
+                if (tn->state != NODE_STATE_GOOD) {
                     continue;
                 }
 
-                /* no need to make a copy */
+                an = azureus_node_get_ref(tn);
 
-                TAILQ_REMOVE(&reply->m.find_node_rsp.node_list, an, next);
+                if (aparent->type == AZUREUS_TASK_TYPE_FIND_VALUE) {
+                    /* send a find value request */
+                    fvt = azureus_dht_find_value_task_new(ad, an, 
+                                                            aparent->db_key);
+                    if (!fvt) {
+                        /* FIXME: need a better way to handle this! */
+                        ASSERT(0);      
+                    }
 
-                ret = azureus_dht_insert_sort_closest_node(&aparent->node_list, 
-                        &lookup_id,
-                        &an->node, 
-                        aparent->n_nodes+1);
-                ASSERT(ret == SUCCESS);
-                aparent->n_nodes += 1;
+                    task_add_child_task(&aparent->task, &fvt->task);
+                    azureus_dht_add_task(ad, fvt);
+                    /* FIXME: we need to schedule these tasks right away! */
+                    msg = azureus_rpc_msg_get_ref(fvt->task.pkt);
+                    azureus_dht_rpc_tx(ad, fvt, msg);
 
-                fnt = azureus_dht_find_node_task_new(ad, an, 
-                        &lookup_id);
-                if (!fnt) {
-                    /* FIXME: need a better way to handle this! */
-                    ASSERT(0);      
+                } else if (aparent->type == AZUREUS_TASK_TYPE_STORE_VALUE) {
+                    /* send a store value request */
+                    svt = azureus_dht_store_value_task_new(ad, an, 
+                                                            aparent->db_key, 
+                                                            aparent->db_valset);
+                    if (!svt) {
+                        /* FIXME: need a better way to handle this! */
+                        ASSERT(0);      
+                    }
+
+                    task_add_child_task(&aparent->task, &svt->task);
+                    azureus_dht_add_task(ad, svt);
+                    /* we need to schedule these tasks right away! */
+                    msg = azureus_rpc_msg_get_ref(svt->task.pkt);
+                    azureus_dht_rpc_tx(ad, svt, msg);
                 }
 
-                task_add_child_task(&aparent->task, &fnt->task);
-                azureus_dht_add_task(ad, fnt);
-                msg = azureus_rpc_msg_get_ref(fnt->task.pkt);
-                azureus_dht_rpc_tx(ad, fnt, msg);
+                count++;
+                if (count >= AZUREUS_K) {
+                    break;
+                }
             }
-        }
 
-        if (aparent->task.n_child != 0) {
-            /* we have more waiting to do! */
-            DEBUG("aparent %p n_child %d type %d status %d\n", 
-                    aparent, aparent->task.n_child, achild->type, status);
             return SUCCESS;
 
-        } 
+        case AZUREUS_TASK_STATE_FIND_VALUE:
 
-        /* finally, we are ready to do the actual find/store value */
-
-        if (aparent->type == AZUREUS_TASK_TYPE_FIND_VALUE) {
-            aparent->state = AZUREUS_TASK_STATE_FIND_VALUE;
-        } else if (aparent->type == AZUREUS_TASK_TYPE_STORE_VALUE) {
-            aparent->state = AZUREUS_TASK_STATE_STORE_VALUE;
-        } 
-        
-        count = 0;
-
-        TAILQ_FOREACH_SAFE(tn, &list, next, tnn) {
-
-            if (tn->state != NODE_STATE_GOOD) {
-                continue;
+            if (reply && reply->m.find_value_rsp.has_vals) {
+                ASSERT(0);
             }
 
-            an = azureus_node_get_ref(tn);
-
-            if (aparent->type == AZUREUS_TASK_TYPE_FIND_VALUE) {
-                /* send a find value request */
-                fvt = azureus_dht_find_value_task_new(ad, an, aparent->db_key);
-                if (!fvt) {
-                    /* FIXME: need a better way to handle this! */
-                    ASSERT(0);      
-                }
-
-                task_add_child_task(&aparent->task, &fvt->task);
-                azureus_dht_add_task(ad, fvt);
-                /* FIXME: we need to schedule these tasks right away! */
-                msg = azureus_rpc_msg_get_ref(fvt->task.pkt);
-                azureus_dht_rpc_tx(ad, fvt, msg);
-
-            } else if (aparent->type == AZUREUS_TASK_TYPE_STORE_VALUE) {
-                /* send a store value request */
-                svt = azureus_dht_store_value_task_new(ad, an, aparent->db_key, 
-                                                        aparent->db_valset);
-                if (!svt) {
-                    /* FIXME: need a better way to handle this! */
-                    ASSERT(0);      
-                }
-
-                task_add_child_task(&aparent->task, &svt->task);
-                azureus_dht_add_task(ad, svt);
-                /* we need to schedule these tasks right away! */
-                msg = azureus_rpc_msg_get_ref(svt->task.pkt);
-                azureus_dht_rpc_tx(ad, svt, msg);
+            if (aparent->task.n_child != 0) {
+                /* we have more waiting to do! */
+                DEBUG("aparent %p n_child %d type %d status %d\n", 
+                        aparent, aparent->task.n_child, achild->type, status);
+                return SUCCESS;
             }
 
-            count++;
-            if (count >= AZUREUS_K) {
-                break;
+            break;
+
+        case AZUREUS_TASK_STATE_STORE_VALUE:
+
+            if (aparent->task.n_child != 0) {
+                /* we have more waiting to do! */
+                DEBUG("aparent %p n_child %d type %d status %d\n", 
+                        aparent, aparent->task.n_child, achild->type, status);
+                return SUCCESS;
             }
-        }
 
-        return SUCCESS;
+            db_item = azureus_dht_find_db_item(ad, aparent->db_key);
+            ASSERT(db_item);
 
-    } else if (aparent->state == AZUREUS_TASK_STATE_FIND_VALUE) {
+            /* FIXME: should we be storing all the nodes? */
+            TAILQ_FOREACH_SAFE(tn, &aparent->node_list, next, tnn) {
+                TAILQ_REMOVE(&aparent->node_list, tn, next);
+                TAILQ_INSERT_TAIL(&db_item->node_list, tn, next);
+                db_item->n_nodes++;
+            }
 
-        if (reply && reply->m.find_value_rsp.has_vals) {
+            break;
+
+        default:
             ASSERT(0);
-        }
-
-        if (aparent->task.n_child != 0) {
-            /* we have more waiting to do! */
-            DEBUG("aparent %p n_child %d type %d status %d\n", 
-                    aparent, aparent->task.n_child, achild->type, status);
-            return SUCCESS;
-        }
-
-    } else if (aparent->state == AZUREUS_TASK_STATE_STORE_VALUE) {
-
-        if (aparent->task.n_child != 0) {
-            /* we have more waiting to do! */
-            DEBUG("aparent %p n_child %d type %d status %d\n", 
-                    aparent, aparent->task.n_child, achild->type, status);
-            return SUCCESS;
-        }
     }
-
 
     /* finally, respond to the pending service request */
     tmsg = aparent->tmsg;

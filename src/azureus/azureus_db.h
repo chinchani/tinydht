@@ -61,7 +61,9 @@ struct azureus_db_item {
     struct azureus_db_valset            *valset;
     bool                                is_local;
     TAILQ_ENTRY(azureus_db_item)        db_next;
-    TAILQ_HEAD(db_node_list_head, azureus_node) node_list;
+    struct kbucket_node_search_list_head 
+                                        node_list;
+    int                                 n_nodes;
 };
 
 struct azureus_db_key * azureus_db_key_new(void);
