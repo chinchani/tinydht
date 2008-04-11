@@ -1530,7 +1530,8 @@ azureus_dht_notify_parent_db_task(struct azureus_dht *ad,
     task_delete_child_task(&achild->task);
 
     bzero(&lookup_id, sizeof(struct key));
-    key_new(&lookup_id, KEY_TYPE_SHA1, db_key->data, db_key->len);
+    key_new(&lookup_id, KEY_TYPE_SHA1, 
+            aparent->db_key->data, aparent->db_key->len);
 
     DEBUG("check1 %p %p %p %d %d\n", &achild->task, achild->task.parent, 
             &aparent->task, aparent->task.n_child, aparent->state);
