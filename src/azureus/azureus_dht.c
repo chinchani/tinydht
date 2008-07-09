@@ -670,7 +670,10 @@ azureus_dht_rpc_rx(struct dht *dht, struct sockaddr_storage *from,
         an->alive = TRUE;
         an->node.state = NODE_STATE_GOOD;
         an->failures = 0;
-        azureus_dht_update_node(ad, an);
+        if (at->task.parent) {
+        } else {
+            azureus_dht_update_node(ad, an);
+        }
 
         switch (msg->action) {
 
@@ -1841,6 +1844,8 @@ azureus_dht_update_node(struct azureus_dht *ad, struct azureus_node *an)
     /* FIXME: we should really be deleting this node? we lose all state */
     n = kbucket_delete_node(&ad->kbucket[index], &an->node);
     ASSERT(an == azureus_node_get_ref(n));
+    /* FIXME: This could be a "node copy" for a "child task",
+     * so even if all the fields are identical */
 
     kbucket_insert_node(&ad->kbucket[index], &an->node, AZUREUS_K);
 
