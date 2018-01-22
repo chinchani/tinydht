@@ -2,3 +2,13 @@ TinyDHT is a light-weight implementation of the Azureus Kademlia DHT.
 
 The main goal of TinyDHT is to provide a generic publish/retrieve capability of
 key/value pairs.
+
+NOTE: No longer under active development.
+
+Lessons learnt:
+==============
+1) Latency is very high
+2) As a client participating in a distributed protocol, 
+cannot really play any tricks to "speed" things up because the network will punish you!
+3) The amount of information that can be stored as key/value is very limited 
+because Kademlia was designed primarily for routing and not storage.
